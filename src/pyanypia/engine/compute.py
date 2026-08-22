@@ -56,14 +56,13 @@ def calculate(worker: Worker, params: Params) -> CalcContext:
     benefit.pia_cal2(ctx, methods)
     # re-indexed widow(er) guarantee, then family benefits
     widow_pias: dict[int, float] = {}
+    widow_methods: list[MethodState] = []
     for i, s in enumerate(secondaries):
         if s.is_widow() and _reind_wid_applicable(ctx, s):
             wm = wage_indexed.calculate_reindexed_widow(ctx, s.elig_year)
-            ctx.widow_methods = getattr(  # type: ignore[attr-defined]
-                ctx, "widow_methods", []
-            )
-            ctx.widow_methods.append(wm)
+            widow_methods.append(wm)
             widow_pias[i] = wm.pia_ent
+    ctx.widow_methods = widow_methods  # type: ignore[attr-defined]
     if secondaries:
         fam.pia_cal3(ctx, secondaries, widow_pias)
     return ctx
