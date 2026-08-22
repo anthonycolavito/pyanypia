@@ -164,3 +164,33 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
         ctx, m.mfb_elig, year5, ctx.worker.benefit_date
     )
     return m
+
+
+def calculate_reindexed_widow(
+    ctx: CalcContext, widow_elig_year: int
+) -> MethodState:
+    """ReindWid::calculate — widow(er) guarantee PIA (no MFB)."""
+    assert ctx.worker.benefit_date is not None
+    assert ctx.elig_date is not None
+    m = MethodState(MethodType.REIND_WID, applicable=Applicable.APPLICABLE)
+    elig_year = min(
+        max(ctx.elig_date.year, widow_elig_year), ctx.kbirth.year + 62
+    )
+    earnings = ctx.earn_oasdi_limited
+    year1 = max(ctx.ibegin_all, 1951)
+    year2 = ctx.earn_year
+    index_earnings(ctx, m, year1, elig_year - 2, year2, earnings)
+    n = ctx.comp_period_new.n
+    base.order_earnings(m, year1, year2, n)
+    base.total_earn_cal(m, year1, year2, n)
+    bend_pia = ctx.params.bend_points_pia(elig_year)
+    portion_aime = set_portion_aime(m.ame, bend_pia)
+    m.year_first = elig_year - 1
+    m.year_elig = elig_year
+    m.pia_ent = aimepia_cal(portion_aime, PERC_PIA, elig_year - 1)
+    m.pia_elig[m.year_first] = m.pia_ent
+    base.set_year_cpi(ctx, m)
+    m.pia_ent = base.apply_colas(
+        ctx, m.pia_elig, elig_year, ctx.worker.benefit_date
+    )
+    return m

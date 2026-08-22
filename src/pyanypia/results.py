@@ -26,6 +26,19 @@ class MethodResult:
 
 
 @dataclass(frozen=True)
+class FamilyMemberResult:
+    """One family member's benefit."""
+
+    bic: str
+    benefit_factor: float
+    months_reduction: int
+    full_benefit: float  # PIA x factor, before family max
+    after_max: float  # after family-maximum reduction
+    rounded_benefit: float  # payable
+    pifc: str
+
+
+@dataclass(frozen=True)
 class Results:
     """Everything computed for a worker."""
 
@@ -46,6 +59,7 @@ class Results:
     method: str  # selected method name
     pifc: str
     methods: dict[str, MethodResult] = field(default_factory=dict)
+    family: tuple[FamilyMemberResult, ...] = ()
 
     # convenient aliases
     @property
@@ -90,6 +104,18 @@ def results_from_context(ctx: CalcContext) -> Results:
             aime = m.ame
     from pyanypia.engine.insured import is_disability_insured
 
+    fam_results = tuple(
+        FamilyMemberResult(
+            bic=s.member.bic.strip(),
+            benefit_factor=s.benefit_factor,
+            months_reduction=s.months_ardri,
+            full_benefit=s.full_benefit,
+            after_max=s.benefit,
+            rounded_benefit=s.rounded_benefit,
+            pifc=s.pifc,
+        )
+        for s in getattr(ctx, "secondaries", [])
+    )
     return Results(
         benefit_type=ctx.ioasdi,
         fully_insured_code=ctx.fins_code2,
@@ -108,4 +134,5 @@ def results_from_context(ctx: CalcContext) -> Results:
         method=METHOD_NAME.get(ctx.iappn, " "),
         pifc=ctx.pifc,
         methods=by_name,
+        family=fam_results,
     )

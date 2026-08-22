@@ -10,7 +10,7 @@ Field layouts follow oracle/vendor/oactobjs32/piadata/piaread.cpp exactly:
   12  noncovered pension amount(10) [start mmyyyy(6)]
   22+ OASDI earnings, 10 per line, 11 chars each, %11.2f
   40  assumptions: istart(4) ialtbi(1) ialtaw(1) ibasch(1)
-  70+ family members: bic(2) dob(8) entitlement mmyyyy(6) [onset(8) if W]
+  69+ family members: bic(2) dob(8) entitlement mmyyyy(6) [onset(8) if W]
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ class CaseSpec:
         for i, fam in enumerate(self.family):
             fy, fm, fd = fam.dob
             ey2, em2 = fam.ent
-            s = f"{70 + i:02d}{fam.bic:<2s}{fm:02d}{fd:02d}{fy:04d}{em2:02d}{ey2:04d}"
+            s = f"{69 + i:02d}{fam.bic:<2s}{fm:02d}{fd:02d}{fy:04d}{em2:02d}{ey2:04d}"
             if fam.onset is not None:
                 oy, om, od = fam.onset
                 s += f"{om:02d}{od:02d}{oy:04d}"

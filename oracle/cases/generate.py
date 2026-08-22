@@ -169,7 +169,135 @@ def dib_v1() -> list[CaseSpec]:
     return cases
 
 
-SWEEPS = {"retire_v1": retire_v1, "dib_v1": dib_v1}
+def surv_v1() -> list[CaseSpec]:
+    """Survivor sweep: deaths before/after 62, widow(er)s aged and
+    disabled, young families, divorced widows."""
+    from pia_writer import FamilyMemberSpec
+
+    cases: list[CaseSpec] = []
+    birth_years = [1950, 1960, 1970, 1985]
+    death_ages = [35, 45, 55, 61, 65, 70]
+    patterns = ["steady", "max", "half"]
+    n = 20000
+    for by in birth_years:
+        for da in death_ages:
+            dy = by + da
+            if dy < 1985 or dy > 2025:
+                continue
+            death = (dy, 8, 20)
+            for pat in patterns:
+                earn = earnings_pattern(pat, by, dy)
+                if not earn:
+                    continue
+                death_my = (dy, 8)
+                # family configurations
+                configs: list[tuple[str, list[FamilyMemberSpec]]] = []
+                # aged widow, born 3 years after worker, ent at 60+1m
+                wby = by + 3
+                w60 = ((wby + 60) * 12 + (5 - 1) + 1)
+                w60_ym = (w60 // 12, w60 % 12 + 1)
+                went = max(w60_ym, death_my)
+                configs.append(("agedwid", [
+                    FamilyMemberSpec("D ", (wby, 6, 10), went),
+                ]))
+                # disabled widow at 52, onset 1 year before ent
+                w52 = ((wby + 52) * 12 + (5 - 1) + 1)
+                w52_ym = (w52 // 12, w52 % 12 + 1)
+                went2 = max(w52_ym, death_my)
+                onset_w = (went2[0] - 1, went2[1], 5)
+                configs.append(("diswid", [
+                    FamilyMemberSpec("W ", (wby, 6, 10), went2, onset_w),
+                ]))
+                # young mother + 2 children at death
+                cby = dy - 6
+                configs.append(("young", [
+                    FamilyMemberSpec("E ", (by + 4, 2, 25), death_my),
+                    FamilyMemberSpec("C1", (cby, 4, 1), death_my),
+                    FamilyMemberSpec("C2", (cby - 3, 9, 9), death_my),
+                ]))
+                # child only
+                configs.append(("child", [
+                    FamilyMemberSpec("C1", (cby, 4, 1), death_my),
+                ]))
+                # aged widow + ineligible divorced widow
+                configs.append(("divwid", [
+                    FamilyMemberSpec("D ", (wby, 6, 10), went),
+                    FamilyMemberSpec("D6", (wby - 2, 3, 4), went),
+                ]))
+                for label, fam in configs:
+                    ents = [f.ent for f in fam]
+                    latest = max(ents)
+                    for ben_label, bendate in (
+                        ("ent", latest), ("+1y", add_months(latest, 12)),
+                    ):
+                        # widow ents must be valid vs benefit date ages
+                        n += 1
+                        cases.append(CaseSpec(
+                            case_id=(f"s1-{by}-d{da}-{pat}-{label}"
+                                     f"-{ben_label}"),
+                            ssn=f"9{n:08d}", sex=n % 2, dob=(by, 3, 15),
+                            joasdi=2, ent=None, bendate=bendate,
+                            death=death, earnings=earn, family=fam,
+                        ))
+    return cases
+
+
+def fam_v1() -> list[CaseSpec]:
+    """Life cases with auxiliaries: OAB + aged spouse / young family."""
+    from pia_writer import FamilyMemberSpec
+
+    cases: list[CaseSpec] = []
+    n = 30000
+    for by in [1955, 1960, 1963]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        for pat in ["steady", "max", "half"]:
+            earn = earnings_pattern(pat, by, ent[0] - 1)
+            if not earn:
+                continue
+            sby = by + 2
+            s62 = ((sby + 62) * 12 + (7 - 1) + 1)
+            spouse_ent = max((s62 // 12, s62 % 12 + 1), ent)
+            s65 = ((sby + 65) * 12 + (7 - 1))
+            spouse_ent65 = max((s65 // 12, s65 % 12 + 1), ent)
+            cby = ent[0] - 8
+            configs = [
+                ("spouse62", [FamilyMemberSpec("B ", (sby, 7, 20),
+                                               spouse_ent)]),
+                ("spouse65", [FamilyMemberSpec("B ", (sby, 7, 20),
+                                               spouse_ent65)]),
+                ("youngfam", [
+                    FamilyMemberSpec("B2", (by + 20, 1, 15), ent),
+                    FamilyMemberSpec("C1", (cby, 4, 1), ent),
+                    FamilyMemberSpec("C2", (cby + 2, 9, 9), ent),
+                ]),
+                ("kids", [
+                    FamilyMemberSpec("C1", (cby, 4, 1), ent),
+                    FamilyMemberSpec("C2", (cby + 2, 9, 9), ent),
+                ]),
+            ]
+            for label, fam in configs:
+                latest = max([f.ent for f in fam] + [ent])
+                for ben_label, bendate in (
+                    ("ent", latest), ("+1y", add_months(latest, 12)),
+                ):
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"f1-{by}-{pat}-{label}-{ben_label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                        ent=ent, bendate=bendate, earnings=earn,
+                        family=fam,
+                    ))
+    return cases
+
+
+SWEEPS = {
+    "retire_v1": retire_v1,
+    "dib_v1": dib_v1,
+    "surv_v1": surv_v1,
+    "fam_v1": fam_v1,
+}
 
 
 def write_sweep(name: str) -> int:

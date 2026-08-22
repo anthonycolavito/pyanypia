@@ -20,12 +20,20 @@ class NotYetPorted(NotImplementedError):
 
 
 def calculate(worker: Worker, params: Params) -> CalcContext:
+    from pyanypia.engine import family as fam
+
     ctx = CalcContext(worker=worker, params=params)
     if worker.benefit_type == BenefitType.SURVIVOR:
-        raise NotYetPorted("survivor cases land in phase 4")
-    assert worker.entitlement is not None
-    ent_date = worker.entitlement
+        if not worker.family:
+            raise NotYetPorted("survivor case needs family members")
+        ent_date = worker.family[0].entitlement
+    else:
+        assert worker.entitlement is not None
+        ent_date = worker.entitlement
+    secondaries = [fam.SecondaryState(fm) for fm in worker.family]
+    ctx.secondaries = secondaries  # type: ignore[attr-defined]
     benefit.data_check(ctx, ent_date)
+    fam.data_check_aux(ctx, secondaries)
     # calculate2 (PiaCalAny): attribute earnings, then QCs/insured status
     earnings.earn_projection(ctx)
     earnings.earn_hi_cal(ctx)
@@ -46,7 +54,49 @@ def calculate(worker: Worker, params: Params) -> CalcContext:
     benefit.apply_di_max(ctx, methods)
     benefit.set_high_mfb(ctx, methods)
     benefit.pia_cal2(ctx, methods)
+    # re-indexed widow(er) guarantee, then family benefits
+    widow_pias: dict[int, float] = {}
+    for i, s in enumerate(secondaries):
+        if s.is_widow() and _reind_wid_applicable(ctx, s):
+            wm = wage_indexed.calculate_reindexed_widow(ctx, s.elig_year)
+            ctx.widow_methods = getattr(  # type: ignore[attr-defined]
+                ctx, "widow_methods", []
+            )
+            ctx.widow_methods.append(wm)
+            widow_pias[i] = wm.pia_ent
+    if secondaries:
+        fam.pia_cal3(ctx, secondaries, widow_pias)
     return ctx
+
+
+def _reind_wid_applicable(
+    ctx: CalcContext, s: object
+) -> bool:
+    """ReindWid::isApplicable."""
+    from pyanypia.engine.family import SecondaryState
+
+    assert isinstance(s, SecondaryState)
+    w = ctx.worker
+    if w.death_date is None:
+        return False
+    from datetime import date as _date
+
+    try:
+        age62 = _date(ctx.kbirth.year + 62, ctx.kbirth.month, ctx.kbirth.day)
+    except ValueError:  # Feb 29 birthday-eve
+        age62 = _date(ctx.kbirth.year + 62, ctx.kbirth.month, 28)
+    if not (
+        ctx.elig_year > 1978
+        and w.iend > 1950
+        and s.is_widow()
+        and w.death_date < age62
+        and not w.totalize
+    ):
+        return False
+    year = (
+        s.member.entitlement.year if s.major_bic == "W" else s.elig_year
+    )
+    return year > 1984 or w.death_date.year >= 1985
 
 
 def _qc_cal(ctx: CalcContext) -> None:
@@ -58,10 +108,15 @@ def _qc_cal(ctx: CalcContext) -> None:
     if ctx.ioasdi == BenefitType.SURVIVOR:
         assert w.death_date is not None
         when = w.death_date
+        iswas = (
+            2
+            if (w.death_date.year > 62 + w.dob.year or w.valdi > 0)
+            else 0
+        )
     else:
         assert w.entitlement is not None
         when = date(w.entitlement.year, w.entitlement.month, 1)
-    iswas = 1 if w.is_primary() else 0
+        iswas = 1
     ctx.fins_code = insured.ins_cal_full(ctx, when, iswas)
     ctx.fins_code2 = insured.fins2_cal(ctx, ctx.fins_code)
     ctx.fins_non_freeze_code = insured.ins_non_freeze_cal_full(

@@ -63,6 +63,23 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
             cessation_pia=spec.get("cessation_pia", 0.0),
             cessation_mfb=spec.get("cessation_mfb", 0.0),
         ))
+    from pyanypia import FamilyMember
+
+    family = []
+    for fm in spec.get("family", []):
+        fy, fmm, fd = fm["dob"]
+        family.append(FamilyMember(
+            bic=fm["bic"],
+            dob=date(fy, fmm, fd),
+            entitlement=MonthYear(*fm["ent"]),
+            disability_onset=(
+                date(*fm["onset"]) if fm.get("onset") else None
+            ),
+        ))
+    death = None
+    if spec.get("death"):
+        dy, dm, dd = spec["death"]
+        death = date(dy, dm, dd)
     return Worker(
         dob=date(y, m, d),
         sex=spec["sex"],
@@ -70,7 +87,9 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
         earnings={int(k): v for k, v in spec["earnings"].items()},
         entitlement=ent,
         benefit_date=ben,
+        death_date=death,
         disability_periods=tuple(periods),
+        family=tuple(family),
     )
 
 
@@ -96,8 +115,42 @@ def assert_case_matches(r, expected):  # type: ignore[no-untyped-def]
     assert f2(r.unrounded_benefit) == f2(expected["unrounded_benefit"])
     assert f2(r.monthly_benefit) == f2(expected["rounded_benefit"])
     assert r.months_reduction_or_credit == expected["months_ardri"]
-    assert r.age_at_benefit is not None
-    assert r.age_at_benefit.years == expected["age_ben_years"]
-    assert r.age_at_benefit.months == expected["age_ben_months"]
+    if r.age_at_benefit is None:
+        assert expected["age_ben_years"] == 0
+        assert expected["age_ben_months"] == 0
+    else:
+        assert r.age_at_benefit.years == expected["age_ben_years"]
+        assert r.age_at_benefit.months == expected["age_ben_months"]
     assert r.pifc == expected["pifc"]
     assert r.method == expected.get("high_method", " ")
+    exp_sec = expected.get("secondaries", [])
+    assert len(r.family) == len(exp_sec), "family size"
+    for got, exp in zip(r.family, exp_sec, strict=True):
+        assert got.bic == exp["bic"].strip(), "family bic"
+        assert f2(got.full_benefit) == f2(exp["full_benefit"]), (
+            f"family {got.bic} full benefit"
+        )
+        assert f2(got.rounded_benefit) == f2(exp["rounded_benefit"]), (
+            f"family {got.bic} rounded benefit"
+        )
+        assert got.pifc == exp["pifc"], "family pifc"
+
+
+def assert_rejects_like_oracle(spec, expected):  # type: ignore[no-untyped-def]
+    """When the oracle errored on a case, pyanypia must reject it too,
+    with the same AnyPIA error code."""
+    import re
+
+    import pytest
+
+    from pyanypia import compute
+    from pyanypia.errors import PiaError
+
+    m = re.search(r"PiaException: (\d+)", expected["error"])
+    assert m, f"unparseable oracle error: {expected['error']}"
+    code = int(m.group(1))
+    with pytest.raises(PiaError) as exc_info:
+        compute(worker_from_spec(spec))
+    assert exc_info.value.code == code, (
+        f"oracle code {code}, pyanypia code {exc_info.value.code}"
+    )
