@@ -28,7 +28,7 @@ def load_sweep(name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     ]
     assert len(specs) == len(expected), f"sweep {name}: manifest/golden mismatch"
     out = []
-    for spec, exp in zip(specs, expected):
+    for spec, exp in zip(specs, expected, strict=True):
         assert exp.get("case_id") == spec["case_id"]
         out.append((spec, exp))
     return out
