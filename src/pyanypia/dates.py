@@ -57,6 +57,43 @@ class MonthYear:
 
 @total_ordering
 @dataclass(frozen=True, slots=True)
+class QtrYear:
+    """A (quarter, year) date; quarters run 0-3 (from qtryear.h)."""
+
+    quarter: int
+    year: int
+
+    @classmethod
+    def from_date(cls, d: date) -> QtrYear:
+        return cls((d.month - 1) // 3, d.year)
+
+    @classmethod
+    def from_month_year(cls, my: MonthYear) -> QtrYear:
+        return cls((my.month - 1) // 3, my.year)
+
+    def __lt__(self, other: QtrYear) -> bool:
+        return (self.year, self.quarter) < (other.year, other.quarter)
+
+    def index(self) -> int:
+        return self.year * 4 + self.quarter
+
+    def add(self, quarters: int) -> QtrYear:
+        t = self.index() + quarters
+        return QtrYear(t % 4, t // 4)
+
+    def subtract(self, quarters: int) -> QtrYear:
+        return self.add(-quarters)
+
+    def diff(self, other: QtrYear) -> int:
+        """other - self in quarters (QtrYear::diff(a1, a2) = a2 - a1)."""
+        return other.index() - self.index()
+
+    def to_month_year(self) -> MonthYear:
+        return MonthYear(self.year, 3 * self.quarter + 1)
+
+
+@total_ordering
+@dataclass(frozen=True, slots=True)
 class Age:
     """An age in whole years and months (0-11)."""
 
