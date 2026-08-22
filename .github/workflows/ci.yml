@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: mypy
+      - run: pytest -m "not oracle and not oracle_smoke" -q
+
+  oracle-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check oracle present
+        id: oracle
+        run: |
+          if [ -f oracle/build/Makefile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Install Boost headers
+        if: steps.oracle.outputs.present == 'true'
+        run: sudo apt-get update && sudo apt-get install -y libboost-dev
+      - name: Build oracle
+        if: steps.oracle.outputs.present == 'true'
+        run: make -C oracle/build all
+      - name: Run oracle smoke tests
+        if: steps.oracle.outputs.present == 'true'
+        run: |
+          python -m pip install -e ".[dev]"
+          pytest -m oracle_smoke -q
