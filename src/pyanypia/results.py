@@ -32,6 +32,7 @@ class Results:
     benefit_type: int
     fully_insured_code: str  # OACT code '1'..'7'
     insured: bool
+    disability_insured: bool
     elig_year: int
     aime: float
     pia: float  # highest PIA
@@ -87,10 +88,13 @@ def results_from_context(ctx: CalcContext) -> Results:
         )
         if name == "WAGE_IND":
             aime = m.ame
+    from pyanypia.engine.insured import is_disability_insured
+
     return Results(
         benefit_type=ctx.ioasdi,
         fully_insured_code=ctx.fins_code2,
         insured=ctx.fins_code2 not in ("4", "5", "6", "7"),
+        disability_insured=is_disability_insured(ctx.dis_ins_code),
         elig_year=ctx.elig_year,
         aime=aime,
         pia=ctx.high_pia,

@@ -105,8 +105,13 @@ def _disab_period(spec: CaseSpec) -> str:
     ceased) cessation mmyyyy + pia + mfb."""
     oy, om, od = spec.onset  # type: ignore[misc]
     s = f"{om:02d}{od:02d}{oy:04d}"
-    if spec.prior_ent is not None:
-        pey, pem = spec.prior_ent
+    # for a current DIB, the period's entitlement is the DIB's own
+    # entitlement date (piawrite writes it; piaread checks it)
+    prior = spec.prior_ent
+    if prior is None and spec.joasdi == 3:
+        prior = spec.ent
+    if prior is not None:
+        pey, pem = prior
         s += f"{pem:02d}{pey:04d}"
     else:
         s += "000000"

@@ -32,3 +32,72 @@ def load_sweep(name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
         assert exp.get("case_id") == spec["case_id"]
         out.append((spec, exp))
     return out
+
+
+def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
+    """Builds a pyanypia Worker from a generator CaseSpec dict, mirroring
+    what the oracle reads from the .pia file."""
+    from datetime import date
+
+    from pyanypia import BenefitType, DisabilityPeriod, MonthYear, Worker
+
+    y, m, d = spec["dob"]
+    ent = MonthYear(*spec["ent"]) if spec.get("ent") else None
+    ben = MonthYear(*spec["bendate"]) if spec.get("bendate") else None
+    periods = []
+    if spec.get("onset"):
+        oy, om, od = spec["onset"]
+        prior = spec.get("prior_ent")
+        if prior is None and spec["joasdi"] == 3:
+            prior = spec["ent"]
+        periods.append(DisabilityPeriod(
+            onset=date(oy, om, od),
+            first_entitlement=MonthYear(*prior) if prior else None,
+            waiting_period_start=(
+                MonthYear(*spec["waitper"]) if spec.get("waitper") else None
+            ),
+            cessation=(
+                MonthYear(*spec["cessation"])
+                if spec.get("cessation") else None
+            ),
+            cessation_pia=spec.get("cessation_pia", 0.0),
+            cessation_mfb=spec.get("cessation_mfb", 0.0),
+        ))
+    return Worker(
+        dob=date(y, m, d),
+        sex=spec["sex"],
+        benefit_type=BenefitType(spec["joasdi"]),
+        earnings={int(k): v for k, v in spec["earnings"].items()},
+        entitlement=ent,
+        benefit_date=ben,
+        disability_periods=tuple(periods),
+    )
+
+
+def assert_case_matches(r, expected):  # type: ignore[no-untyped-def]
+    """Field-by-field cent-level comparison against a golden row."""
+    def f2(x: float) -> str:
+        return f"{x:.2f}"
+
+    assert r.fully_insured_code == expected["fins"], "insured code"
+    assert r.disability_insured == expected["dib_insured"], "dib insured"
+    assert r.elig_year == expected["elig_year"], "eligibility year"
+    exp_methods = {m["method"]: m for m in expected["methods"]}
+    assert set(r.methods) == set(exp_methods), "method set"
+    for name, em in exp_methods.items():
+        gm = r.methods[name]
+        assert gm.applicable == em["applicable"], f"{name} applicable"
+        assert f2(gm.ame) == f2(em["ame"]), f"{name} ame"
+        assert f2(gm.pia) == f2(em["pia"]), f"{name} pia"
+        assert f2(gm.mfb) == f2(em["mfb"]), f"{name} mfb"
+    assert f2(r.pia) == f2(expected["high_pia"]), "high pia"
+    assert f2(r.mfb) == f2(expected["high_mfb"]), "high mfb"
+    assert f2(r.support_pia) == f2(expected["support_pia"]), "support pia"
+    assert f2(r.unrounded_benefit) == f2(expected["unrounded_benefit"])
+    assert f2(r.monthly_benefit) == f2(expected["rounded_benefit"])
+    assert r.months_reduction_or_credit == expected["months_ardri"]
+    assert r.age_at_benefit is not None
+    assert r.age_at_benefit.years == expected["age_ben_years"]
+    assert r.age_at_benefit.months == expected["age_ben_months"]
+    assert r.pifc == expected["pifc"]
+    assert r.method == expected.get("high_method", " ")

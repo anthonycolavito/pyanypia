@@ -169,6 +169,96 @@ def months_dri_cal(ctx: CalcContext) -> None:
     ctx.arf = retire_age.factor_dri(ctx.months_ardri, elig_year)
 
 
+def dimax_elig(
+    amedimax: float, piaelig: float, year: int
+) -> tuple[float, float, int]:
+    """PiaMethod::dimaxElig — returns (mfb at eligibility, cap, cap type)."""
+    mfbelig = round_benefit(0.85 * amedimax, year)
+    mfbelt = round_benefit(1.5 * piaelig, year)
+    if mfbelig > mfbelt:
+        return mfbelt, 1.5, 1
+    if mfbelig < piaelig:
+        return piaelig, 1.0, 2
+    return mfbelig, 0.85, 3
+
+
+def di_max(
+    ctx: CalcContext, m: MethodState, amedimax: float, piamax: float,
+    elig_year: int,
+) -> float:
+    """PiaMethod::diMax / diMaxNonFreeze — 1980 amendments DI MFB cap."""
+    from pyanypia.engine.methods import base as mbase
+
+    assert ctx.worker.benefit_date is not None
+    year = elig_year - 1
+    mfb, cap, ind_cap = dimax_elig(amedimax, m.pia_elig[year], year)
+    m.mfb_elig[year] = mfb
+    m.cap = cap
+    m.ind_cap = ind_cap
+    return max(
+        mbase.apply_colas(ctx, m.mfb_elig, elig_year,
+                          ctx.worker.benefit_date),
+        piamax,
+    )
+
+
+def apply_di_max(ctx: CalcContext, methods: list[MethodState]) -> None:
+    """DI maximum application from PiaCal::piaCal1."""
+    from pyanypia.dates import MonthYear as MY
+
+    earliest_ent = _earliest_ent_date(ctx)
+    if not (
+        ctx.ioasdi == BenefitType.DISABILITY
+        and ctx.elig_year > 1978
+        and earliest_ent is not None
+        and not earliest_ent < MY(1980, 7)
+    ):
+        return
+    high_aime = 0.0
+    high_max = 0.0
+    for m in methods:
+        if m.method == MethodType.WAGE_IND:
+            dimax_temp = di_max(ctx, m, m.ame, ctx.high_pia, ctx.elig_year)
+            m.mfb_ent = dimax_temp
+            if high_aime < m.ame:
+                high_aime = m.ame
+                high_max = dimax_temp
+    for m in methods:
+        if m.method == MethodType.CHILD_CARE:
+            dimax_temp = di_max(ctx, m, m.ame, ctx.high_pia, ctx.elig_year)
+            m.mfb_ent = dimax_temp
+            if high_aime < m.ame:
+                high_aime = m.ame
+                high_max = dimax_temp
+    for m in methods:
+        if m.method == MethodType.WAGE_IND_NON_FREEZE:
+            dimax_temp = di_max(
+                ctx, m, m.ame, ctx.high_pia, ctx.elig_year_non_freeze
+            )
+            m.mfb_ent = dimax_temp
+            if high_aime < m.ame:
+                high_aime = m.ame
+                high_max = dimax_temp
+    for m in methods:
+        if m.applicable > 0 and m.method not in (
+            MethodType.DIB_GUAR, MethodType.WAGE_IND, MethodType.CHILD_CARE,
+        ):
+            m.mfb_ent = high_max
+
+
+def _earliest_ent_date(ctx: CalcContext):  # type: ignore[no-untyped-def]
+    """WorkerDataGeneral::getEarliestEntDate."""
+    w = ctx.worker
+    if w.valdi > 1:
+        return w.disability_periods[w.valdi - 1].first_entitlement
+    if (
+        ctx.ioasdi in (BenefitType.OLD_AGE, BenefitType.SURVIVOR)
+        and w.valdi == 1
+    ):
+        return w.disability_periods[0].first_entitlement
+    return w.entitlement
+
+
 def set_high_pia(ctx: CalcContext, methods: list[MethodState]) -> None:
     ctx.iappn = -1
     for m in methods:

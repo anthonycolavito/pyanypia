@@ -134,7 +134,42 @@ def retire_v1() -> list[CaseSpec]:
     return cases
 
 
-SWEEPS = {"retire_v1": retire_v1}
+def dib_v1() -> list[CaseSpec]:
+    """Disability sweep: single current period of disability, no prior
+    entitlements, eligibility (onset) 1984+."""
+    cases: list[CaseSpec] = []
+    birth_years = [1955, 1960, 1965, 1970, 1975, 1980, 1985, 1990, 1995]
+    patterns = ["steady", "max", "half", "sporadic", "late_start",
+                "declining"]
+    onset_ages = [30, 45, 58]
+    n = 10000
+    for by in birth_years:
+        for pat in patterns:
+            for oa in onset_ages:
+                onset_year = by + oa
+                if onset_year < 1984 or onset_year > 2024:
+                    continue
+                onset = (onset_year, 6, 15)
+                waitper = (onset_year, 7)
+                ent = (onset_year, 12)
+                for ben_label, bendate in (
+                    ("ent", ent),
+                    ("+1y", add_months(ent, 12)),
+                ):
+                    earn = earnings_pattern(pat, by, onset_year)
+                    if not earn:
+                        continue
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"d1-{by}-{pat}-o{oa}-{ben_label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=(by, 3, 15),
+                        joasdi=3, ent=ent, bendate=bendate, earnings=earn,
+                        onset=onset, waitper=waitper,
+                    ))
+    return cases
+
+
+SWEEPS = {"retire_v1": retire_v1, "dib_v1": dib_v1}
 
 
 def write_sweep(name: str) -> int:

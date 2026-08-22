@@ -97,6 +97,24 @@ class CalcContext:
     qc_req_perm_non_freeze: int = 0
     deemed_qc_req: int = 0
 
+    # disability-insured working data (PiaData qcDis* fields)
+    qc_dis_date1: QtrYear | None = None
+    qc_dis_date2: QtrYear | None = None
+    qc_dis_date3: QtrYear | None = None
+    qc_dis_date4: QtrYear | None = None
+    qc_dis_date5: QtrYear | None = None
+    qc_dis_date6: QtrYear | None = None
+    qc_dis_qtr: int = 0
+    qc_dis_qtr2: int = 0
+    qc_dis_req: int = 0
+    qc_dis_years: int = 0
+    qc_total_dis: int = 0
+    qc_dis_date_nf1: QtrYear | None = None
+    qc_dis_date_nf2: QtrYear | None = None
+    qc_dis_qtr_nf: int = 0
+    qc_dis_req_nf: int = 0
+    qc_total_dis_nf: int = 0
+
     # insured status
     fins_code: str = " "  # InsCodeType char
     fins_code2: str = " "  # OACT summary code '1'..'7'

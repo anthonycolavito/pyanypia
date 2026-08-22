@@ -43,8 +43,7 @@ def calculate(worker: Worker, params: Params) -> CalcContext:
     ctx.methods = methods  # type: ignore[attr-defined]
     benefit.set_high_pia(ctx, methods)
     benefit.set_support_pia(ctx, methods)
-    if ctx.ioasdi == BenefitType.DISABILITY:
-        raise NotYetPorted("DI maximum lands in phase 4")
+    benefit.apply_di_max(ctx, methods)
     benefit.set_high_mfb(ctx, methods)
     benefit.pia_cal2(ctx, methods)
     return ctx
@@ -72,7 +71,11 @@ def _qc_cal(ctx: CalcContext) -> None:
         ctx, ctx.fins_non_freeze_code
     )
     if ctx.ioasdi == BenefitType.DISABILITY:
-        raise NotYetPorted("disability insured status lands in phase 4")
+        assert w.entitlement is not None
+        ctx.dis_ins_code = insured.dis_ins_cal(ctx, w.entitlement, 1)
+        ctx.dis_ins_non_freeze_code = insured.dis_ins_non_freeze_cal(
+            ctx, w.entitlement, 1
+        )
 
 
 def _run_methods(ctx: CalcContext, ent_date: MonthYear) -> list[MethodState]:
@@ -99,11 +102,49 @@ def _run_methods(ctx: CalcContext, ent_date: MonthYear) -> list[MethodState]:
         methods.append(special_min.calculate(ctx))
     if 1978 < ctx.elig_year < 1982:
         raise NotYetPorted("frozen minimum lands in phase 5")
-    if w.valdi > 0:
-        raise NotYetPorted(
-            "DIB guarantee / non-freeze methods land in phases 4-5"
+    if ctx.elig_year > 1978 and (
+        w.valdi > 1
+        or (
+            w.valdi > 0
+            and ctx.ioasdi in (BenefitType.OLD_AGE, BenefitType.SURVIVOR)
         )
+    ):
+        raise NotYetPorted("DIB guarantee lands with dib_v2")
+    if _non_freeze_applicable(ctx):
+        methods.append(wage_indexed.calculate(ctx, non_freeze=True))
     return methods
+
+
+def _non_freeze_applicable(ctx: CalcContext) -> bool:
+    """WageIndNonFreeze::isApplicable."""
+    from pyanypia.engine import insured as ins
+
+    w = ctx.worker
+    if ctx.ioasdi == BenefitType.DISABILITY:
+        if not ins.is_disability_insured(ctx.dis_ins_non_freeze_code):
+            return False
+    elif ctx.ioasdi == BenefitType.OLD_AGE:
+        if (
+            not ins.is_fully_insured(ctx.fins_non_freeze_code)
+            or w.valdi == 0
+        ):
+            return False
+    else:
+        if (
+            not (
+                ins.is_fully_insured(ctx.fins_non_freeze_code)
+                or ins.is_currently_insured(ctx.fins_non_freeze_code)
+            )
+            or w.valdi == 0
+        ):
+            return False
+    if w.valdi > 0:
+        wp = w.disability_periods[0].waiting_period_start
+        wp_year = wp.year if wp is not None else 0
+    else:
+        wp_year = 0
+    ely_temp = min(wp_year, ctx.kbirth.year + 62)
+    return ely_temp > 1978 and (w.iend > 1950 or w.totalize)
 
 
 def _set_amend90(ctx: CalcContext, ent_date: MonthYear) -> None:

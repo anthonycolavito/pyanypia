@@ -557,3 +557,337 @@ def n_non_freeze_cal(
         if comp.n < 2:
             comp.n = 2
             comp.n_drop = comp.n_elapsed - comp.n
+
+
+# ---- disability insured status (PiaData::qcDis* + PiaCal::disInsCal) ----
+
+# DisInsCode::DisInsCodeType characters
+DIS_NOQCS = "0"
+DIS_FULLAND2040 = "1"
+DIS_FULLANDSPECIAL = "2"
+DIS_FULLANDDIB = "3"
+DIS_FULLANDBLIND = "4"
+DIS_NOTFULLNOT2040 = "5"
+DIS_NOTFULLHAS2040 = "6"
+DIS_FULLNOT2040 = "7"
+DIS_PRIMARYDEATH = "8"
+DIS_NONPRIMARYDEATH = "9"
+DIS_TOTALIZED = "T"
+
+DIS_INSURED_CODES = frozenset("1234")
+
+
+def is_disability_insured(code: str) -> bool:
+    return code in DIS_INSURED_CODES
+
+
+def _qtr_of_age21(ctx: CalcContext) -> QtrYear:
+    q = QtrYear.from_date(ctx.kbirth)
+    return QtrYear((q.quarter + 1) % 4, q.year + 21 + (q.quarter + 1) // 4)
+
+
+def qc_dis_req2_cal(ctx: CalcContext, date_moyr: MonthYear) -> None:
+    """Elapsed quarters after disability cessation (qcDisReq2Cal)."""
+    w = ctx.worker
+    d0 = w.disability_periods[0] if w.valdi > 0 else None
+    cess = d0.cessation if d0 is not None else None
+    date3 = QtrYear.from_month_year(cess) if cess is not None else None
+    date4 = QtrYear.from_month_year(date_moyr)
+    if w.valdi == 0 or cess is None or not (date3 < date4):  # type: ignore[operator]
+        ctx.qc_dis_qtr2 = 0
+        ctx.qc_dis_date3 = None
+        ctx.qc_dis_date4 = None
+        return
+    assert date3 is not None
+    date3 = date3.add(1)
+    qtr2 = date3.diff(date4) + 1
+    if qtr2 > 40:
+        date3 = date4.subtract(39)
+        qtr2 = 40
+    ctx.qc_dis_date3 = date3
+    ctx.qc_dis_date4 = date4
+    ctx.qc_dis_qtr2 = qtr2
+
+
+def _qc_di_spec(ctx: CalcContext, qcdiqtrt: int, period: int) -> None:
+    """Special insured test period start (qcDiSpec)."""
+    if period == 0:
+        d2 = ctx.qc_dis_date2
+    else:
+        d2 = ctx.qc_dis_date6
+    d1 = _qtr_of_age21(ctx)
+    tempqcs = 12 - qcdiqtrt
+    if tempqcs <= 0:
+        if period == 0:
+            ctx.qc_dis_date1 = None
+            ctx.qc_dis_date2 = None
+        else:
+            ctx.qc_dis_date5 = None
+            ctx.qc_dis_date6 = None
+        return
+    assert d2 is not None
+    if d1.diff(d2) < tempqcs - 1:
+        d1 = d2.subtract(tempqcs - 1)
+    if period == 0:
+        ctx.qc_dis_date1 = d1
+    else:
+        ctx.qc_dis_date5 = d1
+
+
+def qc_dis_req_cal(
+    ctx: CalcContext,
+    date_moyr: MonthYear,
+    trial: int,
+    dospecial: bool,
+    dofreeze: bool,
+) -> None:
+    """Required QCs for DI insured status (qcDisReqCal)."""
+    w = ctx.worker
+    if w.valdi > 0:
+        d2 = QtrYear.from_date(w.disability_periods[0].onset).add(trial)
+    else:
+        d2 = QtrYear.from_month_year(date_moyr)
+    ctx.qc_dis_date2 = d2
+    age21 = _qtr_of_age21(ctx)
+    if ctx.qc_dis_qtr2 == 40:
+        ctx.qc_dis_qtr = 40
+        ctx.qc_dis_date1 = None
+        ctx.qc_dis_date2 = None
+    else:
+        d1 = d2.subtract(39 - ctx.qc_dis_qtr2)
+        ctx.qc_dis_date1 = d1
+        if dospecial and d1 < age21:
+            _qc_di_spec(ctx, ctx.qc_dis_qtr2, 0)
+        if ctx.qc_dis_date1 is None:
+            ctx.qc_dis_qtr = ctx.qc_dis_qtr2
+        else:
+            d1 = ctx.qc_dis_date1
+            if d1.year < YEAR37:
+                d1 = QtrYear(0, YEAR37)
+                ctx.qc_dis_date1 = d1
+            assert ctx.qc_dis_date2 is not None
+            ctx.qc_dis_qtr = (
+                d1.diff(ctx.qc_dis_date2) + 1 + ctx.qc_dis_qtr2
+            )
+    # consider period before prior disability
+    d1cur = ctx.qc_dis_date1
+    prior_cess = (
+        w.disability_periods[1].cessation if w.valdi >= 2 else None
+    )
+    if (
+        w.valdi < 2
+        or d1cur is None
+        or prior_cess is None
+        or not (d1cur < QtrYear.from_month_year(prior_cess))
+    ):
+        ctx.qc_dis_date5 = None
+        ctx.qc_dis_date6 = None
+    else:
+        d1 = QtrYear.from_month_year(prior_cess)
+        assert ctx.qc_dis_date2 is not None
+        d2b = ctx.qc_dis_date2
+        tempqcs = (
+            4 - d1.quarter if d1.year < d2b.year
+            else d2b.quarter - d1.quarter
+        )
+        if ctx.qcov.get(d1.year, 0) < tempqcs:
+            d1 = d1.add(1)
+        if d1 > d2b:
+            ctx.qc_dis_date1 = None
+            ctx.qc_dis_date2 = None
+            ctx.qc_dis_qtr = ctx.qc_dis_qtr2
+        else:
+            ctx.qc_dis_date1 = d1
+            ctx.qc_dis_qtr = d1.diff(d2b) + 1 + ctx.qc_dis_qtr2
+        d1p = w.disability_periods[1]
+        if dofreeze:
+            d6 = QtrYear.from_date(d1p.onset)
+        else:
+            assert d1p.waiting_period_start is not None
+            d6 = QtrYear.from_month_year(d1p.waiting_period_start)
+        if ctx.qcov.get(d6.year, 0) <= d6.quarter:
+            d6 = d6.subtract(1)
+        ctx.qc_dis_date6 = d6
+        d5 = d6.subtract(39 - ctx.qc_dis_qtr)
+        ctx.qc_dis_date5 = d5
+        if dospecial and d5 < age21:
+            _qc_di_spec(ctx, ctx.qc_dis_qtr, 1)
+        if ctx.qc_dis_date5 is not None:
+            d5 = ctx.qc_dis_date5
+            if d5.year < YEAR37:
+                d5 = QtrYear(0, YEAR37)
+                ctx.qc_dis_date5 = d5
+            ctx.qc_dis_qtr += d5.diff(ctx.qc_dis_date6) + 1
+    ctx.qc_dis_years = (ctx.qc_dis_qtr + 2) // 4
+    ctx.qc_dis_req = ctx.qc_dis_qtr // 2
+
+
+def qc_dis_cal(ctx: CalcContext) -> None:
+    """Earned QCs in the disability insured period (qcDisCal)."""
+    total = 0
+    if ctx.qc_dis_date1 is not None and ctx.qc_dis_date2 is not None:
+        total = ctx.qcov_accumulate(ctx.qc_dis_date1, ctx.qc_dis_date2, total)
+    if ctx.qc_dis_date3 is not None and ctx.qc_dis_date4 is not None:
+        total = ctx.qcov_accumulate(ctx.qc_dis_date3, ctx.qc_dis_date4, total)
+    if ctx.qc_dis_date5 is not None and ctx.qc_dis_date6 is not None:
+        total = ctx.qcov_accumulate(ctx.qc_dis_date5, ctx.qc_dis_date6, total)
+    ctx.qc_total_dis = total
+
+
+def qc_dis_req_non_freeze_cal(
+    ctx: CalcContext, date_moyr: MonthYear, dospecial: bool
+) -> None:
+    """qcDisReqNonFreezeCal."""
+    w = ctx.worker
+    if w.valdi > 0:
+        wp = w.disability_periods[0].waiting_period_start
+        assert wp is not None
+        d2 = QtrYear.from_month_year(wp)
+    else:
+        d2 = QtrYear.from_month_year(date_moyr)
+    ctx.qc_dis_date_nf2 = d2
+    age21 = _qtr_of_age21(ctx)
+    d1 = d2.subtract(39)
+    ctx.qc_dis_date_nf1 = d1
+    if dospecial and d1 < age21:
+        # qcDiSpecNonFreeze with qcdiqtrt=0: 12-QC window
+        d1 = age21
+        if age21.diff(d2) < 11:
+            d1 = d2.subtract(11)
+        ctx.qc_dis_date_nf1 = d1
+    if d1.year < YEAR37:
+        d1 = QtrYear(0, YEAR37)
+        ctx.qc_dis_date_nf1 = d1
+    ctx.qc_dis_qtr_nf = d1.diff(d2) + 1
+    ctx.qc_dis_req_nf = ctx.qc_dis_qtr_nf // 2
+
+
+def qc_dis_non_freeze_cal(ctx: CalcContext) -> None:
+    total = 0
+    if ctx.qc_dis_date_nf1 is not None and ctx.qc_dis_date_nf2 is not None:
+        total = ctx.qcov_accumulate(
+            ctx.qc_dis_date_nf1, ctx.qc_dis_date_nf2, total
+        )
+    ctx.qc_total_dis_nf = total
+
+
+def dis_ins_cal(
+    ctx: CalcContext, date_moyr: MonthYear, iswas_primary: int
+) -> str:
+    """Disability insured status code (PiaCal::disInsCal)."""
+    w = ctx.worker
+    if w.death_date is not None and not (
+        date_moyr < MonthYear.from_date(w.death_date).add_months(1)
+    ):
+        return (
+            DIS_PRIMARYDEATH if iswas_primary == 2 else DIS_NONPRIMARYDEATH
+        )
+    if ctx.qc_total == 0:
+        return DIS_NOQCS
+    age21 = _qtr_of_age21(ctx)
+    trial = 0
+    d0 = w.disability_periods[0] if w.valdi > 0 else None
+    qc_dis_req2_cal(ctx, date_moyr)
+    if (
+        ctx.qc_dis_qtr2 < 40
+        and w.valdi > 0
+        and d0 is not None
+        and d0.waiting_period_start is not None
+    ):
+        wp = d0.waiting_period_start
+        trial = (
+            4 * (wp.year - d0.onset.year)
+            + (wp.month + 2) // 3
+            - (d0.onset.month + 2) // 3
+        )
+    for i in range(trial, -1, -1):
+        qc_dis_req_cal(ctx, date_moyr, i, False, False)
+        qc_dis_cal(ctx)
+        if ctx.qc_total_dis >= ctx.qc_dis_req:
+            break
+    if ctx.qc_total_dis < ctx.qc_dis_req and (
+        (
+            ctx.qc_dis_date5 is not None
+            and ctx.qc_dis_date5 < age21
+        )
+        or (ctx.qc_dis_date5 is None and ctx.qc_dis_date1 is not None
+            and ctx.qc_dis_date1 < age21)
+    ):
+        for i in range(0, trial + 1):
+            qc_dis_req_cal(ctx, date_moyr, i, True, False)
+            qc_dis_cal(ctx)
+            if ctx.qc_total_dis >= ctx.qc_dis_req:
+                break
+    if ctx.qc_total_dis < ctx.qc_dis_req and ctx.qc_dis_date5 is not None:
+        for i in range(trial, -1, -1):
+            qc_dis_req_cal(ctx, date_moyr, i, False, True)
+            qc_dis_cal(ctx)
+            if ctx.qc_total_dis >= ctx.qc_dis_req:
+                break
+    if (
+        ctx.qc_total_dis < ctx.qc_dis_req
+        and ctx.qc_dis_date5 is not None
+        and ctx.qc_dis_date5 < age21
+    ):
+        for i in range(0, trial + 1):
+            qc_dis_req_cal(ctx, date_moyr, i, True, True)
+            qc_dis_cal(ctx)
+            if ctx.qc_total_dis >= ctx.qc_dis_req:
+                break
+    if ctx.qc_total < ctx.qc_req:
+        if iswas_primary == 1 and w.totalize:
+            return DIS_TOTALIZED
+        if ctx.qc_total_dis < ctx.qc_dis_req:
+            return DIS_NOTFULLNOT2040
+        return DIS_NOTFULLHAS2040
+    if ctx.qc_total_dis < ctx.qc_dis_req:
+        if iswas_primary == 1 and w.totalize:
+            return DIS_TOTALIZED
+        if w.blind:
+            return DIS_FULLANDBLIND
+        return DIS_FULLNOT2040
+    if iswas_primary == 1:
+        return DIS_FULLANDDIB
+    if ctx.qc_dis_qtr == 40:
+        return DIS_FULLAND2040
+    return DIS_FULLANDSPECIAL
+
+
+def dis_ins_non_freeze_cal(
+    ctx: CalcContext, date_moyr: MonthYear, iswas_primary: int
+) -> str:
+    """disInsNonFreezeCal."""
+    w = ctx.worker
+    if w.death_date is not None and not (
+        date_moyr < MonthYear.from_date(w.death_date).add_months(1)
+    ):
+        return (
+            DIS_PRIMARYDEATH if iswas_primary == 2 else DIS_NONPRIMARYDEATH
+        )
+    if ctx.qc_total == 0:
+        return DIS_NOQCS
+    age21 = _qtr_of_age21(ctx)
+    qc_dis_req_non_freeze_cal(ctx, date_moyr, False)
+    qc_dis_non_freeze_cal(ctx)
+    if ctx.qc_total_dis_nf < ctx.qc_dis_req_nf and (
+        ctx.qc_dis_date_nf1 is not None and ctx.qc_dis_date_nf1 < age21
+    ):
+        qc_dis_req_non_freeze_cal(ctx, date_moyr, True)
+        qc_dis_non_freeze_cal(ctx)
+    if ctx.qc_total_non_freeze < ctx.qc_req_non_freeze:
+        if iswas_primary == 1 and w.totalize:
+            return DIS_TOTALIZED
+        if ctx.qc_total_dis_nf < ctx.qc_dis_req_nf:
+            return DIS_NOTFULLNOT2040
+        return DIS_NOTFULLHAS2040
+    if ctx.qc_total_dis_nf < ctx.qc_dis_req_nf:
+        if iswas_primary == 1 and w.totalize:
+            return DIS_TOTALIZED
+        if w.blind:
+            return DIS_FULLANDBLIND
+        return DIS_FULLNOT2040
+    if iswas_primary == 1:
+        return DIS_FULLANDDIB
+    if ctx.qc_dis_qtr_nf == 40:
+        return DIS_FULLAND2040
+    return DIS_FULLANDSPECIAL

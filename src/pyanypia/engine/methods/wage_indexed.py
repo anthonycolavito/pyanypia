@@ -124,22 +124,30 @@ def windfall_cal(
         m.pia_elig[m.year_first] = piaelt
 
 
-def calculate(ctx: CalcContext) -> MethodState:
-    """WageInd::calculate."""
+def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
+    """WageInd::calculate / WageIndNonFreeze::calculate (same algorithm;
+    the non-freeze variant uses the non-freeze eligibility year and
+    computation period)."""
     assert ctx.worker.benefit_date is not None
-    m = MethodState(MethodType.WAGE_IND, applicable=Applicable.APPLICABLE)
+    mtype = (
+        MethodType.WAGE_IND_NON_FREEZE if non_freeze else MethodType.WAGE_IND
+    )
+    m = MethodState(mtype, applicable=Applicable.APPLICABLE)
     earnings = ctx.earn_oasdi_limited
     year1 = max(ctx.ibegin_all, 1951)
     year2 = ctx.earn_year
-    index_earnings(ctx, m, year1, ctx.elig_year - 2, year2, earnings)
-    n = ctx.comp_period_new.n
+    year5 = ctx.elig_year_non_freeze if non_freeze else ctx.elig_year
+    index_earnings(ctx, m, year1, year5 - 2, year2, earnings)
+    n = (
+        ctx.comp_period_new_non_freeze.n if non_freeze
+        else ctx.comp_period_new.n
+    )
     base.order_earnings(m, year1, year2, n)
     base.total_earn_cal(m, year1, year2, n)
-    year5 = ctx.elig_year
     bend_pia = ctx.params.bend_points_pia(year5)
     portion_aime = set_portion_aime(m.ame, bend_pia)
     perc_pia = PERC_PIA
-    year4 = ctx.elig_year - 1
+    year4 = year5 - 1
     m.year_first = year4
     m.year_elig = year5
     m.pia_elig[year4] = aimepia_cal(portion_aime, perc_pia, year4)
