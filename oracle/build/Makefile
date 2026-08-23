@@ -13,17 +13,20 @@ WORK   := $(ORACLE)/work
 BIN    := $(ORACLE)/bin
 OBJ    := $(WORK)/obj
 
+# Boost headers: from Homebrew when present, otherwise already on the
+# default include path. Never pass -isystem /usr/include -- on GCC that
+# reorders the standard include search and breaks #include_next.
 BOOST_PREFIX := $(shell brew --prefix boost 2>/dev/null)
 ifneq ($(wildcard $(BOOST_PREFIX)/include/boost/version.hpp),)
-  BOOST_INC := $(BOOST_PREFIX)/include
+  BOOST_FLAGS := -isystem $(BOOST_PREFIX)/include
 else
-  BOOST_INC := /usr/include
+  BOOST_FLAGS :=
 endif
 
 CXX      ?= c++
 CXXFLAGS := -O2 -std=c++14 -w -DANYPIAB -DONEBIGFILE \
   -I$(WORK)/oactobjs32/linux -I$(WORK)/oactobjs32/include \
-  -isystem $(BOOST_INC)
+  $(BOOST_FLAGS)
 
 .PHONY: all anypiab prepare clean compile
 
