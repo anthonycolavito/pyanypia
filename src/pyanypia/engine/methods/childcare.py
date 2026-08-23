@@ -12,7 +12,6 @@ from pyanypia.engine.context import CalcContext
 from pyanypia.engine.methods import base, wage_indexed
 from pyanypia.engine.methods.base import (
     PERC_MFB,
-    PERC_PIA,
     Applicable,
     MethodState,
     MethodType,
@@ -84,7 +83,9 @@ def calculate(ctx: CalcContext) -> MethodState:
     portion_aime = wage_indexed.set_portion_aime(m.ame, bend_pia)
     m.year_first = yr4
     m.year_elig = yr5
-    m.pia_elig[yr4] = wage_indexed.aimepia_cal(portion_aime, PERC_PIA, yr4)
+    m.pia_elig[yr4] = wage_indexed.aimepia_cal(
+        portion_aime, ctx.params.perc_pia(yr5), yr4
+    )
     if base.wep_app(ctx):
         wage_indexed.windfall_cal(ctx, m, portion_aime)
     base.set_year_cpi(ctx, m)

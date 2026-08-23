@@ -31,6 +31,7 @@ from pyanypia.law import (  # noqa: E402
     Age65ComputationPoint,
     ChildCareDropout,
     ColaChange,
+    DecliningPercentages,
     DiDropoutFive,
     NraChange,
     Reform,
@@ -111,6 +112,23 @@ VARIANTS: list[ReformVariant] = [
         [lcw.di_dropout_five(2010, 2100)],
         Reform(di_dropout_five=DiDropoutFive(2010, 2100)),
         "the same, entitlements from 2010 on",
+    ),
+    # ---- declining formula percentages (DECLINEPERC) -----------------
+    ReformVariant(
+        "declining_1pc",
+        [lcw.declining_perc((1.0, 1.0, 1.0), 2000, 2050)],
+        Reform(declining_perc=DecliningPercentages(
+            2000, 2050, factors=(1.0, 1.0, 1.0))),
+        "all three formula percentages a hundredth smaller each year",
+    ),
+    ReformVariant(
+        "declining_top_only",
+        [lcw.declining_perc((0.0, 2.0, 3.0), 2010, 2040,
+                            later=((2025, (0.0, 0.5, 0.5)),))],
+        Reform(declining_perc=DecliningPercentages(
+            2010, 2040, factors=(0.0, 2.0, 3.0),
+            later=((2025, (0.0, 0.5, 0.5)),))),
+        "only the upper two, faster at first and then slower",
     ),
     # ---- child-care dropout years (CHILDCAREDROPOUT) -----------------
     ReformVariant(
@@ -198,7 +216,7 @@ BY_NAME = {v.name: v for v in VARIANTS}
 # sweep is testing the oracle against a Reform that means something else.
 _SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG",
               "NEWSPECMIN", "AGE65COMP",
-              "CHILDCAREDROPOUT"}
+              "CHILDCAREDROPOUT", "DECLINEPERC"}
 for _v in VARIANTS:
     _unsupported = {c.name for c in _v.changes} - _SUPPORTED
     if _unsupported:

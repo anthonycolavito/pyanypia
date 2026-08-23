@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from pyanypia.dates import MonthYear
 from pyanypia.engine.context import CalcContext
+from pyanypia.params import PERC_PIA as _PERC_PIA
 from pyanypia.rounding import round_benefit
 from pyanypia.worker import BenefitType
 
@@ -196,7 +197,7 @@ def set_portion_pia_elig(
     )
 
 
-PERC_PIA = (0.90, 0.32, 0.15)
+PERC_PIA = _PERC_PIA  # present law; a reform varies it by eligibility year
 PERC_MFB = (1.5, 2.72, 1.34, 1.75)
 WINDFALL_YEARS = 30
 

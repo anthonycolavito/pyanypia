@@ -30,6 +30,10 @@ def _series(values: tuple[float, ...], first: int) -> dict[int, float]:
     return {first + i: v for i, v in enumerate(values)}
 
 
+# PercPia::PERC — the 90/32/15 benefit formula percentages
+PERC_PIA = (0.90, 0.32, 0.15)
+
+
 class Params:
     """Assembled law parameters for one assumption set (present law)."""
 
@@ -106,6 +110,11 @@ class Params:
 
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
+
+    def perc_pia(self, elig_year: int) -> tuple[float, ...]:
+        """PiaParams::percPiaCal — the benefit formula percentages for an
+        eligibility year. Only a reform makes them vary by year."""
+        return PERC_PIA
 
     def max_childcare_dropout_years(
         self, elig_year: int, benefit_year: int

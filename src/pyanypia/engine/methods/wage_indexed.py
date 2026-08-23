@@ -96,10 +96,15 @@ def deconvert_ame(
 
 
 def windfall_perc(
-    elig_year: int, benefit_year: int, spec_min_tot: int
+    elig_year: int,
+    benefit_year: int,
+    spec_min_tot: int,
+    base_perc: tuple[float, ...] = PERC_PIA,
 ) -> tuple[float, ...]:
-    """PercPia::setWindfallPerc — modified first PIA percentage."""
-    percs = list(PERC_PIA)
+    """PercPia::setWindfallPerc — modified first PIA percentage. The
+    percentages it starts from are the eligibility year's, which a reform
+    can have declining (WageIndGeneral::windfallCal)."""
+    percs = list(base_perc)
     if elig_year < 1985 or spec_min_tot >= WINDFALL_YEARS:
         return tuple(percs)
     rv = (
@@ -127,7 +132,8 @@ def windfall_cal(
         m.windfall = WindfallType.HAS30YEARS
         return
     perc_wind = windfall_perc(
-        ctx.elig_year, ctx.worker.benefit_date.year, m.years_total
+        ctx.elig_year, ctx.worker.benefit_date.year, m.years_total,
+        ctx.params.perc_pia(ctx.elig_year),
     )
     m.pia_windfall = m.pia_elig[m.year_first]
     elig_year = ctx.elig_year - 1
@@ -167,7 +173,7 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
     base.total_earn_cal(m, year1, year2, n)
     bend_pia = ctx.params.bend_points_pia(year5)
     portion_aime = set_portion_aime(m.ame, bend_pia)
-    perc_pia = PERC_PIA
+    perc_pia = ctx.params.perc_pia(year5)
     year4 = year5 - 1
     m.year_first = year4
     m.year_elig = year5
@@ -212,7 +218,9 @@ def calculate_reindexed_widow(
     portion_aime = set_portion_aime(m.ame, bend_pia)
     m.year_first = elig_year - 1
     m.year_elig = elig_year
-    m.pia_ent = aimepia_cal(portion_aime, PERC_PIA, elig_year - 1)
+    m.pia_ent = aimepia_cal(
+        portion_aime, ctx.params.perc_pia(elig_year), elig_year - 1
+    )
     m.pia_elig[m.year_first] = m.pia_ent
     base.set_year_cpi(ctx, m)
     m.pia_ent = base.apply_colas(

@@ -19,7 +19,7 @@ import dataclasses
 from dataclasses import dataclass, field
 
 from pyanypia.dates import Age
-from pyanypia.params import Params, projection, retire_age
+from pyanypia.params import PERC_PIA, Params, projection, retire_age
 from pyanypia.params.assumptions import Assumptions
 
 # LawChange::phaseType
@@ -98,6 +98,21 @@ class BendPointMinusConstant(Change):
 class DiDropoutFive(Change):
     """Give every computation five dropout years rather than the
     one-for-five disability rule (LawChangeDIDROP5)."""
+
+
+@dataclass(frozen=True)
+class DecliningPercentages(Change):
+    """The benefit formula percentages falling year by year
+    (LawChangeDECLINEPERC).
+
+    `factors` are the percentage cuts applied to each of the three
+    formula percentages in every year of the span, compounding: 1.0 takes
+    a hundredth off what the year before had. `later` opens further
+    intervals, each with its own factors, from the year it names.
+    """
+
+    factors: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    later: tuple[tuple[int, tuple[float, float, float]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -188,6 +203,7 @@ class Reform:
     special_min: SpecialMinimum | None = None
     comp_point: Age65ComputationPoint | None = None
     childcare_dropout: ChildCareDropout | None = None
+    declining_perc: DecliningPercentages | None = None
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
@@ -219,7 +235,45 @@ class ReformedParams(Params):
 
     def __init__(self, assumptions: Assumptions, reform: Reform) -> None:
         self.reform = reform
+        self._declining_perc: dict[int, tuple[float, ...]] | None = None
         super().__init__(assumptions)
+        if reform.declining_perc is not None:
+            self._declining_perc = self._build_declining_perc()
+
+    def _build_declining_perc(self) -> dict[int, tuple[float, ...]]:
+        """LawChangeDECLINEPERC::percPiaCal and PiaParamsLC::projectPerc.
+
+        Each interval compounds its cuts onto where the one before left
+        off, and the last percentages reached carry forward unchanged.
+        """
+        change = self.reform.declining_perc
+        assert change is not None
+        intervals = [(change.start_year, change.factors), *change.later]
+        out: dict[int, tuple[float, ...]] = {}
+        current = list(PERC_PIA)
+        last_overall = min(self.maxyear, change.end_year)
+        for i, (start, factors) in enumerate(intervals):
+            end = (
+                last_overall if i == len(intervals) - 1
+                else min(self.maxyear, intervals[i + 1][0] - 1)
+            )
+            for year in range(start, end + 1):
+                current = [
+                    c * (1.0 - f / 100.0)
+                    for c, f in zip(current, factors, strict=True)
+                ]
+                out[year] = tuple(current)
+        for year in range(last_overall + 1, self.maxyear + 1):
+            out[year] = tuple(current)
+        return out
+
+    def perc_pia(self, elig_year: int) -> tuple[float, ...]:
+        """PiaParams::percPiaCal off the changed percentages."""
+        if self._declining_perc is None:
+            return super().perc_pia(elig_year)
+        return self._declining_perc.get(
+            elig_year, super().perc_pia(elig_year)
+        )
 
     # ---- construction-time hooks ----
 
@@ -453,6 +507,7 @@ __all__ = [
     "BendPointMinusConstant",
     "Change",
     "ColaChange",
+    "DecliningPercentages",
     "DiDropoutFive",
     "Law",
     "NraChange",

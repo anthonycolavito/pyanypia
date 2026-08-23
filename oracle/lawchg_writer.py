@@ -113,6 +113,20 @@ def di_dropout_five(start_year: int, end_year: int,
     return Change("DIDROP5", 1, start_year, end_year, phase_type)
 
 
+def declining_perc(factors: tuple[float, float, float], start_year: int,
+                   end_year: int,
+                   later: tuple[tuple[int, tuple[float, float, float]], ...]
+                   = (), phase_type: int = 0) -> Change:
+    """Benefit formula percentages falling year by year. The indicator is
+    how many intervals there are; each one after the first gets its own
+    line of `year f0 f1 f2`."""
+    lines = [
+        " ".join([str(year), *(f"{f}" for f in fs)]) for year, fs in later
+    ]
+    return Change("DECLINEPERC", 1 + len(later), start_year, end_year,
+                  phase_type, extras=[f"{f}" for f in factors], lines=lines)
+
+
 def childcare_dropout(fq_ratio: float, max_age: int, max_years: int,
                       start_year: int, end_year: int,
                       phase_type: int = 0) -> Change:
