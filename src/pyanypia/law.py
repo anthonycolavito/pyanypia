@@ -101,6 +101,24 @@ class DiDropoutFive(Change):
 
 
 @dataclass(frozen=True)
+class ChildCareDropout(Change):
+    """Widen the child-care dropout years (LawChangeCHILDCAREDROPOUT).
+
+    The method becomes applicable to everyone in the span, up to
+    `max_years` dropout years are allowed counting the ordinary ones, and
+    a year counts as child-care if its earnings are at or under
+    `fq_ratio` of the average wage rather than zero.
+
+    The change also carries a maximum age of child, which the batch path
+    never reads -- nothing in the calculation calls getMaxChildcareAge(),
+    because the child-care years come in on the case itself.
+    """
+
+    fq_ratio: float = 0.0
+    max_years: int = 3
+
+
+@dataclass(frozen=True)
 class Age65ComputationPoint(Change):
     """Move the computation point from age 62 towards 65, so that more
     years count towards the elapsed years (LawChangeAGE65COMP).
@@ -169,6 +187,7 @@ class Reform:
     wage_base: WageBaseChange | None = None
     special_min: SpecialMinimum | None = None
     comp_point: Age65ComputationPoint | None = None
+    childcare_dropout: ChildCareDropout | None = None
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
@@ -309,6 +328,33 @@ class ReformedParams(Params):
             months_ardri, retire_age.AR_MONTHLY_SPOUSE_62_65
         )
 
+    def max_childcare_dropout_years(
+        self, elig_year: int, benefit_year: int
+    ) -> int:
+        """PiaParamsLC::getMaxChildcareDropoutYears."""
+        change = self.reform.childcare_dropout
+        if change is not None and change.is_effective(elig_year, benefit_year):
+            return change.max_years
+        return super().max_childcare_dropout_years(elig_year, benefit_year)
+
+    def childcare_dropout_amount(
+        self, elig_year: int, benefit_year: int
+    ) -> float:
+        """PiaParamsLC::getChildcareDropoutAmount — a share of the average
+        wage in the benefit year."""
+        change = self.reform.childcare_dropout
+        if change is not None and change.is_effective(elig_year, benefit_year):
+            return change.fq_ratio * self.fq[benefit_year]
+        return super().childcare_dropout_amount(elig_year, benefit_year)
+
+    def childcare_always_applicable(
+        self, elig_year: int, benefit_year: int
+    ) -> bool:
+        change = self.reform.childcare_dropout
+        return change is not None and change.is_effective(
+            elig_year, benefit_year
+        )
+
     def comp_point_shift(self, elig_year: int, benefit_year: int) -> int:
         """PiaCalLC::nelapsed2Cal — the phase-in, capped at the change's
         own number of years."""
@@ -403,6 +449,7 @@ __all__ = [
     "FOR_NEW_ELIGIBLES",
     "Age65ComputationPoint",
     "BendPointFraction",
+    "ChildCareDropout",
     "BendPointMinusConstant",
     "Change",
     "ColaChange",

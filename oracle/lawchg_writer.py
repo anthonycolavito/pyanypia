@@ -113,6 +113,15 @@ def di_dropout_five(start_year: int, end_year: int,
     return Change("DIDROP5", 1, start_year, end_year, phase_type)
 
 
+def childcare_dropout(fq_ratio: float, max_age: int, max_years: int,
+                      start_year: int, end_year: int,
+                      phase_type: int = 0) -> Change:
+    """Widen the child-care dropout years. The maximum age of child is
+    part of the file format but the batch path never reads it."""
+    return Change("CHILDCAREDROPOUT", 1, start_year, end_year, phase_type,
+                  extras=[f"{fq_ratio}", str(max_age), str(max_years)])
+
+
 def age65_comp(years: int, step: int, start_year: int, end_year: int,
                phase_type: int = 0) -> Change:
     """Move the computation point from 62 towards 65. The indicator is

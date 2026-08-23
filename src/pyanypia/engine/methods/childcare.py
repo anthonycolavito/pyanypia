@@ -28,8 +28,16 @@ MAX_CHILDCARE_DROPOUT_YEARS = 3
 CHILDCARE_DROPOUT_AMOUNT = 0.0
 
 
+def _elig_ben_years(ctx: CalcContext) -> tuple[int, int]:
+    elig = ctx.elig_date.year if ctx.elig_date is not None else 0
+    ben = ctx.worker.benefit_date
+    return elig, (ben.year if ben is not None else 0)
+
+
 def is_applicable(ctx: CalcContext) -> bool:
-    """ChildCareCalc::isApplicable."""
+    """ChildCareCalcLC::isApplicable — a reform can force it on."""
+    if ctx.params.childcare_always_applicable(*_elig_ben_years(ctx)):
+        return True
     w = ctx.worker
     if not (
         ctx.elig_year >= YEAR79
@@ -93,10 +101,9 @@ def _drop_max(ctx: CalcContext) -> int:
     child-care dropout years is capped at three, and at least two
     computation years must remain."""
     i1 = ctx.comp_period_new.n_drop
-    if i1 < MAX_CHILDCARE_DROPOUT_YEARS:
-        return min(
-            MAX_CHILDCARE_DROPOUT_YEARS - i1, ctx.comp_period_new.n - 2
-        )
+    i2 = ctx.params.max_childcare_dropout_years(*_elig_ben_years(ctx))
+    if i1 < i2:
+        return min(i2 - i1, ctx.comp_period_new.n - 2)
     return 0
 
 
@@ -106,7 +113,9 @@ def _dropout_cal(ctx: CalcContext, m: MethodState) -> int:
     drop_max = _drop_max(ctx)
     if drop_max <= 0:
         return 0
-    amount = CHILDCARE_DROPOUT_AMOUNT + 0.01
+    amount = ctx.params.childcare_dropout_amount(
+        *_elig_ben_years(ctx)
+    ) + 0.01
     w = ctx.worker
     earn50 = max(ctx.ibegin_all, YEAR51)
     years = range(earn50, ctx.earn_year + 1)

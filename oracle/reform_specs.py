@@ -29,6 +29,7 @@ import lawchg_writer as lcw  # noqa: E402
 from pyanypia.law import (  # noqa: E402
     FOR_EVERYONE,
     Age65ComputationPoint,
+    ChildCareDropout,
     ColaChange,
     DiDropoutFive,
     NraChange,
@@ -111,6 +112,21 @@ VARIANTS: list[ReformVariant] = [
         Reform(di_dropout_five=DiDropoutFive(2010, 2100)),
         "the same, entitlements from 2010 on",
     ),
+    # ---- child-care dropout years (CHILDCAREDROPOUT) -----------------
+    ReformVariant(
+        "childcare_half_awi",
+        [lcw.childcare_dropout(0.5, 6, 3, 2000, 2100)],
+        Reform(childcare_dropout=ChildCareDropout(
+            2000, 2100, fq_ratio=0.5, max_years=3)),
+        "a child-care year is one earning under half the average wage",
+    ),
+    ReformVariant(
+        "childcare_five_years",
+        [lcw.childcare_dropout(0.25, 12, 5, 2000, 2100)],
+        Reform(childcare_dropout=ChildCareDropout(
+            2000, 2100, fq_ratio=0.25, max_years=5)),
+        "a quarter of it, and five dropout years rather than three",
+    ),
     # ---- computation point (AGE65COMP) -------------------------------
     ReformVariant(
         "comp_point_63",
@@ -181,7 +197,8 @@ BY_NAME = {v.name: v for v in VARIANTS}
 # A reform's changes must all be types pyanypia claims to support, or the
 # sweep is testing the oracle against a Reform that means something else.
 _SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG",
-              "NEWSPECMIN", "AGE65COMP"}
+              "NEWSPECMIN", "AGE65COMP",
+              "CHILDCAREDROPOUT"}
 for _v in VARIANTS:
     _unsupported = {c.name for c in _v.changes} - _SUPPORTED
     if _unsupported:

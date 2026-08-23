@@ -107,6 +107,27 @@ class Params:
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
 
+    def max_childcare_dropout_years(
+        self, elig_year: int, benefit_year: int
+    ) -> int:
+        """PiaParams::getMaxChildcareDropoutYearsPL — three, counting the
+        ordinary dropout years."""
+        return 3
+
+    def childcare_dropout_amount(
+        self, elig_year: int, benefit_year: int
+    ) -> float:
+        """PiaParams::getChildcareDropoutAmountPL — a child-care dropout
+        year must have no earnings at all."""
+        return 0.0
+
+    def childcare_always_applicable(
+        self, elig_year: int, benefit_year: int
+    ) -> bool:
+        """ChildCareCalcLC::isApplicable — a reform can make the method
+        apply whether or not present law would."""
+        return False
+
     def comp_point_shift(self, elig_year: int, benefit_year: int) -> int:
         """Years to move the computation point past 62, which only a
         reform does (PiaCalLC::nelapsed2Cal)."""

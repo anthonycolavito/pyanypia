@@ -770,6 +770,39 @@ def reform_v1() -> list[CaseSpec]:
                 family=[FamilyMemberSpec("B ", (sby, 7, 20), spouse_ent)],
             ))
 
+    # --- child-care years with low, not zero, earnings ----------------
+    # Disability cases, because a full career already spends all three
+    # dropout years on the ordinary ones and leaves nothing for child
+    # care. Present law drops only a year with no earnings at all, so the
+    # child-care years here sit either side of the shares a reform names.
+    for by in [1960, 1970, 1980]:
+        dob = (by, 3, 15)
+        for onset_age in [30, 38]:
+            onset_year = by + onset_age
+            if onset_year < 1990 or onset_year > 2024:
+                continue
+            for frac_label, frac in (("lo", 0.2), ("mid", 0.4)):
+                earn: dict[int, float] = {}
+                care: list[int] = []
+                for y in range(by + 22, onset_year):
+                    if y not in AWI:
+                        continue
+                    if y >= onset_year - 3:
+                        earn[y] = round(frac * AWI[y], 2)
+                        care.append(y)
+                    else:
+                        earn[y] = round(min(AWI[y], BASE[y]), 2)
+                if len(earn) < 4 or not care:
+                    continue
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1cc-{by}-o{onset_age}-{frac_label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=3,
+                    ent=(onset_year, 12), bendate=(onset_year, 12),
+                    earnings=earn, onset=(onset_year, 6, 15),
+                    waitper=(onset_year, 7), childcare_years=care,
+                ))
+
     # --- an aged widow, for the survivor reduction factors ------------
     for by in [1950, 1960]:
         for pat in ["steady", "max"]:
