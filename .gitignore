@@ -3,7 +3,8 @@ __pycache__/
 *.egg-info/
 .venv/
 dist/
-build/
+# only a top-level Python build dir; oracle/build holds the Makefile
+/build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
