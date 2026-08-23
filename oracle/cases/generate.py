@@ -567,6 +567,94 @@ def total_v1() -> list[CaseSpec]:
     return cases
 
 
+def proj_v1() -> list[CaseSpec]:
+    """Earnings that are projected rather than entered year by year, the
+    steady earnings types (maximum/high/average/low), and military
+    service wage credits."""
+    cases: list[CaseSpec] = []
+    n = 70000
+
+    # backward and forward projection from a short entered stretch
+    for by in [1940, 1955, 1960, 1975]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        span = (by + 22, ent[0] - 1)
+        if span[0] < 1937 or span[1] > 2100:
+            continue
+        mid = (span[0] + span[1]) // 2
+        entered = {y: round(AWI[y], 2) for y in range(mid - 2, mid + 3)
+                   if y in AWI}
+        if len(entered) < 5:
+            continue
+        for label, pb, pcb, pf, pcf in (
+            ("awi", 1, 0.0, 1, 0.0),
+            ("awi-plus", 1, 1.50, 1, 2.00),
+            ("const", 2, 3.00, 2, 4.00),
+            ("fwrd-only", 0, 0.0, 1, 0.0),
+            ("back-only", 1, 0.0, 0, 0.0),
+        ):
+            # with no backward projection the record starts where the
+            # entered earnings do
+            lo = span[0] if pb else min(entered)
+            hi = span[1] if pf else max(entered)
+            qct, qc51 = summary_qcs({y: 1.0 for y in range(lo, hi + 1)})
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"p1-{by}-{label}",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=ent, earnings=entered,
+                earnings_span=(lo, hi),
+                proj_back=pb, perc_back=pcb, proj_fwrd=pf, perc_fwrd=pcf,
+                qctottd=qct if lo <= 1977 else None, qctot51td=qc51,
+            ))
+
+    # steady earnings types across a whole career
+    for by in [1950, 1960, 1970]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        lo, hi = by + 22, ent[0] - 1
+        years = [y for y in range(lo, hi + 1) if y in AWI]
+        if not years:
+            continue
+        for label, code in (("max", 1), ("high", 2), ("avg", 3), ("low", 4)):
+            earn = {y: 0.0 for y in years}
+            types = {y: code for y in years}
+            qct, qc51 = summary_qcs({y: 1.0 for y in years})
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"p1t-{by}-{label}",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=ent, earnings=earn, earn_types=types,
+                qctottd=qct if years[0] <= 1977 else None, qctot51td=qc51,
+            ))
+
+    # military service wage credits, in each of the three credit eras
+    for by, periods, label in (
+        (1925, [((1944, 6), (1946, 8))], "ww2"),
+        (1930, [((1951, 3), (1954, 11))], "korea"),
+        (1945, [((1966, 1), (1969, 6))], "vietnam"),
+        (1955, [((1979, 1), (1982, 12))], "post78"),
+        (1930, [((1948, 1), (1949, 12)), ((1952, 4), (1955, 9))], "two"),
+    ):
+        dob = (by, 3, 15)
+        ent = attain_month(dob, 65)
+        earn = earnings_pattern("half", by, ent[0] - 1)
+        if not earn:
+            continue
+        qct, qc51 = summary_qcs(earn)
+        for ben_label, bendate in (("ent", ent), ("+5y", add_months(ent, 60))):
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"p1m-{label}-{ben_label}",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=bendate, earnings=earn,
+                military=periods, qctottd=qct, qctot51td=qc51,
+            ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
@@ -575,6 +663,7 @@ SWEEPS = {
     "hist_v1": hist_v1,
     "special_v1": special_v1,
     "total_v1": total_v1,
+    "proj_v1": proj_v1,
 }
 
 

@@ -95,6 +95,9 @@ class CalcContext:
 
     # quarters of coverage
     qcov: dict[int, int] = field(default_factory=dict)
+    qcov_mil_serv: dict[int, int] = field(default_factory=dict)
+    qc3750_ms: int = 0
+    earn3750_ms: float = 0.0
     qc3750_simp: int = 0
     qc_total50: int = 0
     qc_total51: int = 0

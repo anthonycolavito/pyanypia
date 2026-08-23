@@ -40,6 +40,7 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
     from datetime import date
 
     from pyanypia import BenefitType, DisabilityPeriod, MonthYear, Worker
+    from pyanypia.worker import MilitaryService
 
     y, m, d = spec["dob"]
     ent = MonthYear(*spec["ent"]) if spec.get("ent") else None
@@ -112,9 +113,36 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
         qc_total_51_to_date=spec.get("qctot51td") or 0,
         childcare_years=frozenset(spec.get("childcare_years") or ()),
         totalize=bool(spec.get("totalize")),
+        earnings_span=(
+            tuple(spec["earnings_span"]) if spec.get("earnings_span") else None
+        ),
+        projection=_projection_from_spec(spec),
+        military_service=tuple(
+            MilitaryService(MonthYear(*s), MonthYear(*e))
+            for s, e in (spec.get("military") or [])
+        ),
         qcs_by_year={
             int(k): v for k, v in (spec.get("qcs_by_year") or {}).items()
         },
+    )
+
+
+def _projection_from_spec(spec):  # type: ignore[no-untyped-def]
+    """The .pia earnings-projection lines (07/08/20), if the case has any."""
+    from pyanypia.worker import EarningsProjection
+
+    types = {int(k): v for k, v in (spec.get("earn_types") or {}).items()}
+    if not (spec.get("proj_back") or spec.get("proj_fwrd") or types):
+        return None
+    entered = sorted(int(k) for k in spec["earnings"])
+    return EarningsProjection(
+        proj_back=spec.get("proj_back", 0),
+        perc_back=spec.get("perc_back", 0.0),
+        first_year=entered[0] if entered else 0,
+        proj_fwrd=spec.get("proj_fwrd", 0),
+        perc_fwrd=spec.get("perc_fwrd", 0.0),
+        last_year=entered[-1] if entered else 0,
+        earn_types=types,
     )
 
 

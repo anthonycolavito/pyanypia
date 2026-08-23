@@ -5,7 +5,11 @@ Field layouts follow oracle/vendor/oactobjs32/piadata/piaread.cpp exactly:
   02  death date mmddyyyy(8)
   03  benefit type(1) entitlement mmyyyy(6)
   04  benefit date mmyyyy(6)
-  06  first(4) last(4) years of earnings
+  06  first(4) last(4) years of earnings (the full record)
+  07  backward projection: type(1) percent(6) first entered year(4)
+  08  forward projection: type(1) percent(6) last entered year(4)
+  11  military service: 12 chars per period, mmyyyy start + mmyyyy end
+  20  earnings type per entered year, one digit each
   09  disability period 1 (DisabPeriod.parseString layout)
   10  disability period 2 (the earlier period, same layout)
   12  noncovered pension amount(10) [start mmyyyy(6)]
@@ -59,6 +63,17 @@ class CaseSpec:
     pubpen: float | None = None
     pubpen_date: tuple[int, int] | None = None
     totalize: bool = False
+    # full span of the record (line 06) when projection widens it beyond
+    # the entered years; earnings rows 22+ always cover the entered span
+    earnings_span: tuple[int, int] | None = None
+    proj_back: int = 0
+    perc_back: float = 0.0
+    proj_fwrd: int = 0
+    perc_fwrd: float = 0.0
+    earn_types: dict[int, int] = field(default_factory=dict)
+    military: list[tuple[tuple[int, int], tuple[int, int]]] = field(
+        default_factory=list
+    )
     family: list[FamilyMemberSpec] = field(default_factory=list)
     # summary quarters of coverage (line 95). qctottd covers 1937-1977 and
     # qctot51td covers 1951-1977, so their difference is the pre-1951 total
@@ -106,12 +121,30 @@ class CaseSpec:
             lines.append(s)
         if self.earnings:
             years = sorted(self.earnings)
-            ib, ie = years[0], years[-1]
-            if set(years) != set(range(ib, ie + 1)):
+            first, last = years[0], years[-1]
+            if set(years) != set(range(first, last + 1)):
                 raise ValueError("earnings years must be contiguous (use 0.0)")
+            ib, ie = self.earnings_span or (first, last)
             lines.append(f"06{ib:04d}{ie:04d}")
-            for block, start in enumerate(range(ib, ie + 1, 10)):
-                chunk = range(start, min(start + 10, ie + 1))
+            # 07/08 must follow 06, which resets the entered span
+            if self.proj_back:
+                lines.append(f"07{self.proj_back}{self.perc_back:6.2f}{first:4d}")
+            if self.proj_fwrd:
+                lines.append(f"08{self.proj_fwrd}{self.perc_fwrd:6.2f}{last:4d}")
+            if self.military:
+                periods = "".join(
+                    f"{sm:02d}{sy:04d}{em:02d}{ey:04d}"
+                    for (sy, sm), (ey, em) in self.military
+                )
+                lines.append(f"11{periods}")
+            if self.earn_types:
+                digits = "".join(
+                    str(self.earn_types.get(y, 0))
+                    for y in range(first, last + 1)
+                )
+                lines.append(f"20{digits}")
+            for block, start in enumerate(range(first, last + 1, 10)):
+                chunk = range(start, min(start + 10, last + 1))
                 row = "".join(f"{self.earnings[y]:11.2f}" for y in chunk)
                 lines.append(f"{22 + block:02d}{row}")
         lines.append(
@@ -119,22 +152,21 @@ class CaseSpec:
         )
         if self.qctottd is not None:
             lines.append(f"95{self.qctottd:3d}{self.qctot51td:3d}")
-        if self.qcs_by_year is not None and self.earnings:
+        if self.earnings:
             years = sorted(self.earnings)
-            last = min(years[-1], 1977)
-            if years[0] <= last:
+            ib, ie = self.earnings_span or (years[0], years[-1])
+            if self.qcs_by_year is not None and ib <= min(ie, 1977):
                 digits = "".join(
                     str(min(4, self.qcs_by_year.get(y, 0)))
-                    for y in range(years[0], last + 1)
+                    for y in range(ib, min(ie, 1977) + 1)
                 )
                 lines.append(f"96{digits}")
-        if self.childcare_years and self.earnings:
-            years = sorted(self.earnings)
-            bits = "".join(
-                "1" if y in self.childcare_years else "0"
-                for y in range(years[0], years[-1] + 1)
-            )
-            lines.append(f"97{bits}")
+            if self.childcare_years:
+                bits = "".join(
+                    "1" if y in self.childcare_years else "0"
+                    for y in range(ib, ie + 1)
+                )
+                lines.append(f"97{bits}")
         for i, fam in enumerate(self.family):
             fy, fm, fd = fam.dob
             ey2, em2 = fam.ent

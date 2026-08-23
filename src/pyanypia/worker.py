@@ -53,6 +53,56 @@ class DisabilityPeriod:
     cessation_mfb: float = 0.0
 
 
+class EarnProjType(enum.IntEnum):
+    """EarnProject::earn_proj_type."""
+
+    NO_PROJ = 0
+    AVGWAGE_PROJ = 1  # follows the average-wage increase, plus a percentage
+    CONSTANT_PROJ = 2  # a flat percentage each year
+
+
+class EarnType(enum.IntEnum):
+    """EarnProject::earn_type — how one year's earnings are supplied."""
+
+    ENTERED = 0
+    MAXIMUM = 1
+    HIGH = 2
+    AVERAGE = 3
+    LOW = 4
+    OLDLAW_MAXIMUM = 5
+    CHILDCARE_YEAR = 6
+
+
+@dataclass(frozen=True)
+class EarningsProjection:
+    """EarnProject — how the years outside the entered span are filled in.
+
+    `first_year`/`last_year` bound the entered earnings; the worker's own
+    `earnings_span` bounds the full record. Years before the entered span
+    are projected backward and years after it forward.
+    """
+
+    proj_back: int = EarnProjType.NO_PROJ
+    perc_back: float = 0.0
+    first_year: int = 0
+    proj_fwrd: int = EarnProjType.NO_PROJ
+    perc_fwrd: float = 0.0
+    last_year: int = 0
+    earn_types: dict[int, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MilitaryService:
+    """One period of military service (MilServDates)."""
+
+    start: MonthYear
+    end: MonthYear
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "start", _as_month_year(self.start))
+        object.__setattr__(self, "end", _as_month_year(self.end))
+
+
 @dataclass(frozen=True)
 class FamilyMember:
     """A dependent or survivor (Secondary input side)."""
@@ -79,6 +129,11 @@ class Worker:
     sex: int  # Sex.MALE / Sex.FEMALE
     benefit_type: int  # BenefitType
     earnings: dict[int, float] = field(default_factory=dict)  # OASDI by year
+    # full span of the earnings record (.pia line 06). Wider than the keys
+    # of `earnings` when projection fills in the surrounding years.
+    earnings_span: tuple[int, int] | None = None
+    projection: EarningsProjection | None = None
+    military_service: tuple[MilitaryService, ...] = ()
     entitlement: MonthYear | None = None  # primary entitlement (not survivor)
     benefit_date: MonthYear | None = None
     death_date: date | None = None
@@ -116,6 +171,10 @@ class Worker:
             object.__setattr__(
                 self, "disability_periods", tuple(self.disability_periods)
             )
+        if isinstance(self.military_service, list):
+            object.__setattr__(
+                self, "military_service", tuple(self.military_service)
+            )
         if not isinstance(self.childcare_years, frozenset):
             object.__setattr__(
                 self, "childcare_years", frozenset(self.childcare_years)
@@ -140,15 +199,19 @@ class Worker:
 
     @property
     def ibegin(self) -> int:
+        if self.earnings_span is not None:
+            return self.earnings_span[0]
         return min(self.earnings) if self.earnings else 0
 
     @property
     def iend(self) -> int:
+        if self.earnings_span is not None:
+            return self.earnings_span[1]
         return max(self.earnings) if self.earnings else 0
 
     @property
     def has_earnings(self) -> bool:
-        return bool(self.earnings)
+        return bool(self.earnings) or self.earnings_span is not None
 
     @property
     def valdi(self) -> int:

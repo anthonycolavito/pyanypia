@@ -177,14 +177,20 @@ def qc_total_cal(ctx: CalcContext, qtr_year: QtrYear) -> None:
     """PiaData::qcTotalCal."""
     w = ctx.worker
     ctx.qc3750_simp = qc3750_simp_cal(ctx.earn_total50)
-    ctx.qc_total50 = w.qc_total_to_date - w.qc_total_51_to_date
+    ctx.qc_total50 = (
+        w.qc_total_to_date - w.qc_total_51_to_date + ctx.qc3750_ms
+    )
     i1 = max(ctx.qc_total50, ctx.qc3750_simp)
     if w.qcs_by_year:
         ctx.qc_total51 = ctx.qcov_accumulate(
             QtrYear(0, YEAR51), qtr_year, 0
         )
     else:
-        ctx.qc_total51 = w.qc_total_51_to_date
+        # military quarters 1951-56 add to the lump, then annual quarters
+        # take over from 1978
+        ctx.qc_total51 = w.qc_total_51_to_date + sum(
+            ctx.qcov_mil_serv.get(y, 0) for y in range(1951, 1957)
+        )
         ctx.qc_total51 = ctx.qcov_accumulate(
             QtrYear(0, 1978), qtr_year, ctx.qc_total51
         )
