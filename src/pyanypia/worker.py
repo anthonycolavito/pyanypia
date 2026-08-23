@@ -8,6 +8,7 @@ that pyanypia rejects exactly the cases the oracle rejects.
 from __future__ import annotations
 
 import enum
+import struct
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -41,6 +42,11 @@ def _as_month_year(v: MonthYear | str | None) -> MonthYear | None:
     return MonthYear.from_string(v)
 
 
+def _as_float32(value: float) -> float:
+    """The nearest single-precision value, as DisabPeriod stores it."""
+    return float(struct.unpack("f", struct.pack("f", value))[0])
+
+
 @dataclass(frozen=True)
 class DisabilityPeriod:
     """One period of disability (DisabPeriod)."""
@@ -49,8 +55,17 @@ class DisabilityPeriod:
     first_entitlement: MonthYear | None = None
     waiting_period_start: MonthYear | None = None
     cessation: MonthYear | None = None
+    #: PIA at cessation. Held to single precision, because DisabPeriod
+    #: declares it `float` and casts on read -- carrying full double
+    #: precision here puts pyanypia a cent away from the calculator for
+    #: any value that is not exact in float32.
     cessation_pia: float = 0.0
+    #: MFB at cessation, single precision for the same reason.
     cessation_mfb: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in ("cessation_pia", "cessation_mfb"):
+            object.__setattr__(self, name, _as_float32(getattr(self, name)))
 
 
 class EarnProjType(enum.IntEnum):

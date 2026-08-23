@@ -406,6 +406,39 @@ def hist_v1() -> list[CaseSpec]:
                         earnings=earn, family=fam,
                         qctottd=qct, qctot51td=qc51,
                     ))
+    cases.extend(_old_start_pifc_cases(19000))
+    return cases
+
+
+def _old_start_pifc_cases(n: int) -> list[CaseSpec]:
+    """Old-start winners whose PIA formula code is not the default.
+
+    Pifc::pifcCal returns 'O' for the 1977 old-start on the frozen 1978
+    table and '8' for the 1990 variant, where every other old-start
+    winner gets 'B'. Nothing in the sweeps distinguished them, so the
+    port returned 'B' for all of them and stayed penny-exact. Birth from
+    1916 with eligibility after 1978 is what selects OS1977_79; the
+    earlier cohorts here are controls that must keep giving 'B'.
+    """
+    cases: list[CaseSpec] = []
+    for by in (1913, 1915, 1917, 1920):
+        for ent_year, ben_year in ((1979, 1979), (1980, 1992), (1985, 1995)):
+            if ent_year < by + 62:
+                continue  # not yet 62, which the calculator refuses
+            for pre51 in (18000.0, 30000.0):
+                n += 1
+                # heavy pre-1951 earnings and thin ones after, so the
+                # old-start method is the one that wins
+                earn = {y: round(pre51 / 13, 2) for y in range(1937, 1951)}
+                earn.update({
+                    y: 900.0 for y in range(1951, min(ent_year, 1978))
+                })
+                cases.append(CaseSpec(
+                    case_id=f"h1os-{by}-{ent_year}-{ben_year}-{int(pre51)}",
+                    ssn=f"9{n:08d}", sex=0, dob=(by, 3, 15), joasdi=1,
+                    ent=(ent_year, 6), bendate=(ben_year, 6), earnings=earn,
+                    qctottd=40, qctot51td=20,
+                ))
     return cases
 
 
@@ -866,6 +899,10 @@ def freeze_v1() -> list[CaseSpec]:
                 ))
 
     # --- a period that ceased, then old age, earning throughout --------
+    # The cessation amounts vary because DisabPeriod stores them as a C
+    # float: 900.00 and 1350.00 are exact in single precision and so
+    # cannot show a port that keeps full double precision, whereas
+    # 2048.40 and 3072.60 are not.
     for by in [1950, 1958]:
         dob = (by, 3, 15)
         onset_year = by + 45
@@ -874,15 +911,19 @@ def freeze_v1() -> list[CaseSpec]:
         earn = career(by + 22, ent[0] - 1)
         if len(earn) < 4:
             continue
-        n += 1
-        cases.append(CaseSpec(
-            case_id=f"z1c-{by}-ceased",
-            ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
-            ent=ent, bendate=ent, earnings=earn,
-            onset=(onset_year, 6, 15), waitper=(onset_year, 7),
-            prior_ent=(onset_year, 12), cessation=(onset_year + 6, 6),
-            cessation_pia=900.00, cessation_mfb=1350.00,
-        ))
+        for amt_label, cpia, cmfb in (
+            ("exact", 900.00, 1350.00),
+            ("inexact", 2048.40, 3072.60),
+        ):
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"z1c-{by}-ceased-{amt_label}",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=ent, earnings=earn,
+                onset=(onset_year, 6, 15), waitper=(onset_year, 7),
+                prior_ent=(onset_year, 12), cessation=(onset_year + 6, 6),
+                cessation_pia=cpia, cessation_mfb=cmfb,
+            ))
 
     # --- two periods of disability (valdi == 2) ------------------------
     for by in [1950, 1960]:
@@ -903,7 +944,7 @@ def freeze_v1() -> list[CaseSpec]:
                 onset=(late, 6, 15), waitper=(late, 7),
                 prior_ent=(late, 12),
                 cessation=(late + late_cess_years, 6),
-                cessation_pia=900.00, cessation_mfb=1350.00,
+                cessation_pia=2048.40, cessation_mfb=3072.60,
                 onset2=(early, 6, 15), waitper2=(early, 7),
                 prior_ent2=(early, 12), cessation2=(early + 4, 6),
                 cessation2_pia=900.00, cessation2_mfb=1350.00,

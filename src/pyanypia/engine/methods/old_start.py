@@ -178,6 +178,7 @@ def calculate(ctx: CalcContext, ent_date: MonthYear) -> MethodState:
     assert w.benefit_date is not None
     m = MethodState(MethodType.OLD_START, applicable=Applicable.APPLICABLE)
     method_os = method_os_cal(ctx, ent_date)
+    m.method_os = int(method_os)
     impute_earnings(ctx, m, method_os)
     yr2 = ctx.earn_year
     # a 1977 old-start on the frozen December 1978 table ignores earnings

@@ -94,6 +94,9 @@ class MethodState:
     pia_elig_total: float = 0.0  # PIA at eligibility before totalization
     pia_total: float = 0.0  # PIA at entitlement before totalization
     ame_total: float = 0.0  # AME before totalization
+    #: OldStart::OldStartType for an old-start method, which the
+    #: PIA formula code is drawn from; -1 for every other method
+    method_os: int = -1
 
 
 def set_year_cpi(ctx: CalcContext, m: MethodState) -> None:

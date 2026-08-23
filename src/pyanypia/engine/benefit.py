@@ -11,6 +11,7 @@ from pyanypia.engine.methods.base import (
     MethodType,
     WindfallType,
 )
+from pyanypia.engine.methods.old_start import OldStartType
 from pyanypia.errors import PiaError
 from pyanypia.params import retire_age
 from pyanypia.rounding import round_benefit, round_to_dollar
@@ -335,7 +336,23 @@ def set_pifc(ctx: CalcContext, methods: list[MethodState]) -> None:
                 windfall = WindfallType(m.windfall)
     appnum = ctx.iappn
     if appnum == int(MethodType.OLD_START):
-        ctx.pifc = "B"  # OS1990/OS1977_79 variants come with old-start port
+        # Pifc::pifcCal — the windfall indicator it looks at is the
+        # wage-indexed method's, not old-start's own (piacal.cpp), which
+        # is the `windfall` already resolved above.
+        method_os = -1
+        for m in methods:
+            if m.method == MethodType.OLD_START:
+                method_os = m.method_os
+        if windfall in (
+            WindfallType.ONEHALFPENSION, WindfallType.REDUCEDPERC
+        ):
+            ctx.pifc = "V"
+        elif method_os == int(OldStartType.OS1990):
+            ctx.pifc = "8"
+        elif method_os == int(OldStartType.OS1977_79):
+            ctx.pifc = "O"
+        else:
+            ctx.pifc = "B"
     elif appnum == int(MethodType.PIA_TABLE):
         ctx.pifc = "7" if ctx.amend90 else "B"
     elif appnum == int(MethodType.WAGE_IND):
