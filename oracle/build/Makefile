@@ -36,7 +36,6 @@ all: anypiab anypiab-json paramdump
 # wildcards see the staged files.
 prepare:
 	@mkdir -p $(WORK) $(BIN) $(OBJ)
-	@rsync -a --delete --exclude obj --exclude cases $(VENDOR)/ $(WORK)/src-stamp-ignore 2>/dev/null || true
 	@rm -rf $(WORK)/oactobjs32 $(WORK)/source32
 	@cp -R $(VENDOR)/oactobjs32 $(VENDOR)/source32 $(WORK)/
 	@find $(WORK)/oactobjs32 $(WORK)/source32 \( -name '*.cpp' -o -name '*.h' -o -name '*.H' \) \
@@ -45,6 +44,7 @@ prepare:
 	  for p in $(ORACLE)/patches/*.patch; do \
 	    echo "applying $$p"; patch -d $(WORK) -p1 < $$p || exit 1; \
 	  done; fi
+	@python3 $(ORACLE)/build/case_aliases.py $(WORK)/oactobjs32 $(WORK)/source32
 
 anypiab: prepare
 	@$(MAKE) --no-print-directory compile
