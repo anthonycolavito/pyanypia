@@ -42,11 +42,14 @@ class MonthYear:
         return (self.year, self.month) < (other.year, other.month)
 
     def index(self) -> int:
-        return self.year * 12 + (self.month - 1)
+        """DateMoyr::index — months since January 1971, so earlier months
+        are negative. The delayed-retirement-credit window is defined
+        against this origin, so it is not an arbitrary one."""
+        return 12 * (self.year - 1971) + (self.month - 1)
 
     def add_months(self, months: int) -> MonthYear:
         t = self.index() + months
-        return MonthYear(t // 12, t % 12 + 1)
+        return MonthYear(1971 + t // 12, t % 12 + 1)
 
     def months_since(self, other: MonthYear) -> int:
         return self.index() - other.index()

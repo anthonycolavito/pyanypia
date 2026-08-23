@@ -11,6 +11,7 @@ Field layouts follow oracle/vendor/oactobjs32/piadata/piaread.cpp exactly:
   22+ OASDI earnings, 10 per line, 11 chars each, %11.2f
   40  assumptions: istart(4) ialtbi(1) ialtaw(1) ibasch(1)
   69+ family members: bic(2) dob(8) entitlement mmyyyy(6) [onset(8) if W]
+  95  summary quarters of coverage: qctottd(3) 1937-77, qctot51td(3) 1951-77
 """
 
 from __future__ import annotations
@@ -46,6 +47,12 @@ class CaseSpec:
     pubpen: float | None = None
     pubpen_date: tuple[int, int] | None = None
     family: list[FamilyMemberSpec] = field(default_factory=list)
+    # summary quarters of coverage (line 95). qctottd covers 1937-1977 and
+    # qctot51td covers 1951-1977, so their difference is the pre-1951 total
+    # that OldStart::isApplicable keys on. Batch anypiab never derives these
+    # from pre-1951 earnings, so old-start cases must state them.
+    qctottd: int | None = None
+    qctot51td: int = 0
     istart: int = 2026
     ialtbi: int = 2
     ialtaw: int = 2
@@ -88,6 +95,8 @@ class CaseSpec:
         lines.append(
             f"40{self.istart:04d}{self.ialtbi}{self.ialtaw}{self.ibasch}"
         )
+        if self.qctottd is not None:
+            lines.append(f"95{self.qctottd:3d}{self.qctot51td:3d}")
         for i, fam in enumerate(self.family):
             fy, fm, fd = fam.dob
             ey2, em2 = fam.ent

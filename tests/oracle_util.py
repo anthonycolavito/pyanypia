@@ -90,6 +90,8 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
         death_date=death,
         disability_periods=tuple(periods),
         family=tuple(family),
+        qc_total_to_date=spec.get("qctottd") or 0,
+        qc_total_51_to_date=spec.get("qctot51td") or 0,
     )
 
 

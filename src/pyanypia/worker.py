@@ -115,6 +115,21 @@ class Worker:
             object.__setattr__(
                 self, "disability_periods", tuple(self.disability_periods)
             )
+        self._check_summary_qcs()
+
+    def _check_summary_qcs(self) -> None:
+        """WorkerDataGeneral::qctdCheck2 — reconciles the lump quarters of
+        coverage with the span of entered earnings, so that the pre-1951
+        total (qctd - qc51td) cannot contradict it."""
+        qctd, qc51td = self.qc_total_to_date, self.qc_total_51_to_date
+        if self.ibegin > 1950:
+            qc51td = qctd
+        if self.iend < 1951:
+            qc51td = 0
+        if self.ibegin > 1977:
+            qctd = qc51td = 0
+        object.__setattr__(self, "qc_total_to_date", qctd)
+        object.__setattr__(self, "qc_total_51_to_date", qc51td)
 
     # --- derived helpers (WorkerDataGeneral accessors) ---
 

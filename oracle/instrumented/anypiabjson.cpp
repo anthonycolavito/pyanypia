@@ -128,11 +128,22 @@ public:
     j << ",\"high_pia\":" << num(piaData->highPia.get());
     j << ",\"high_mfb\":" << num(piaData->highMfb.get());
     j << ",\"support_pia\":" << num(piaData->supportPia.get());
-    j << ",\"unrounded_benefit\":" << num(piaData->unroundedBenefit.get());
-    j << ",\"rounded_benefit\":" << num(piaData->roundedBenefit.get());
-    j << ",\"months_ardri\":" << piaData->getMonthsArdri();
-    j << ",\"age_ben_years\":" << piaData->ageBen.getYears();
-    j << ",\"age_ben_months\":" << piaData->ageBen.getMonths();
+    // The worker has no benefit of their own in a survivor case, and
+    // PiaData::initialize() does not clear these four, so without this
+    // guard they would report whatever the previous case in the batch
+    // left behind.
+    const bool workerBen =
+      workerData->getJoasdi() != WorkerData::SURVIVOR;
+    j << ",\"unrounded_benefit\":"
+      << num(workerBen ? piaData->unroundedBenefit.get() : 0.0);
+    j << ",\"rounded_benefit\":"
+      << num(workerBen ? piaData->roundedBenefit.get() : 0.0);
+    j << ",\"months_ardri\":"
+      << (workerBen ? piaData->getMonthsArdri() : 0);
+    j << ",\"age_ben_years\":"
+      << (workerBen ? piaData->ageBen.getYears() : 0);
+    j << ",\"age_ben_months\":"
+      << (workerBen ? piaData->ageBen.getMonths() : 0);
     j << ",\"pifc\":\"" << piaData->getPifc() << "\"";
     if (piacal->highPiaMethod != 0) {
       j << ",\"high_method\":\""

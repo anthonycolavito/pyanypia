@@ -9,7 +9,14 @@ from datetime import date
 from pyanypia.dates import MonthYear
 from pyanypia.engine import benefit, earnings, insured
 from pyanypia.engine.context import CalcContext
-from pyanypia.engine.methods import special_min, wage_indexed
+from pyanypia.engine.methods import (
+    frozen_min,
+    old_start,
+    pia_table,
+    special_min,
+    trans_guar,
+    wage_indexed,
+)
 from pyanypia.engine.methods.base import MethodState, MethodType
 from pyanypia.params import Params, retire_age
 from pyanypia.worker import BenefitType, Worker
@@ -144,18 +151,22 @@ def _run_methods(ctx: CalcContext, ent_date: MonthYear) -> list[MethodState]:
     _set_amend90(ctx, ent_date)
     methods: list[MethodState] = []
     # gates for methods not yet ported are loud, never silently wrong
-    if ctx.earn_total50 > 0.0 or ctx.qc_total50 > 0 or ctx.qc3750_simp > 0:
-        raise NotYetPorted("old-start method lands in phase 5")
-    if ctx.elig_year < 1984:
-        raise NotYetPorted("pia-table method lands in phase 5")
+    if w.totalize:
+        raise NotYetPorted("totalization lands in phase 5")
+    if old_start.is_applicable(ctx):
+        insured.nelapsed_cal(ctx, ctx.comp_period_old, ent_date)
+        insured.n_cal(ctx, ctx.comp_period_old, ent_date)
+        methods.append(old_start.calculate(ctx, ent_date))
+    if pia_table.is_applicable(ctx):
+        methods.append(pia_table.calculate(ctx))
     if wage_indexed.is_applicable(ctx):
         methods.append(wage_indexed.calculate(ctx))
-    if 1979 <= ctx.elig_date.year < 1984 if ctx.elig_date else False:
-        raise NotYetPorted("transitional guarantee lands in phase 5")
+    if trans_guar.is_applicable(ctx):
+        methods.append(trans_guar.calculate(ctx))
     if special_min.is_applicable(ctx):
         methods.append(special_min.calculate(ctx))
-    if 1978 < ctx.elig_year < 1982:
-        raise NotYetPorted("frozen minimum lands in phase 5")
+    if frozen_min.is_applicable(ctx):
+        methods.append(frozen_min.calculate(ctx))
     if ctx.elig_year > 1978 and (
         w.valdi > 1
         or (

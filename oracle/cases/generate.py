@@ -96,7 +96,7 @@ def retire_v1() -> list[CaseSpec]:
     patterns = ["steady", "max", "half", "sporadic", "late_start",
                 "early_quit", "declining"]
     n = 0
-    for i, by in enumerate(birth_years):
+    for by in birth_years:
         days = [15]
         if by == 1957:
             days = [1, 2, 15]
@@ -292,11 +292,120 @@ def fam_v1() -> list[CaseSpec]:
     return cases
 
 
+def hist_v1() -> list[CaseSpec]:
+    """Historical cohorts: pre-1951 earnings driving the old-start method,
+    pre-1979 eligibility driving the PIA table, and 1979-1983 eligibility
+    driving the transitional guarantee.
+
+    Old-start needs at least one pre-1951 QC, so every case here starts
+    earning in 1937 (the first year of the AWI series).
+    """
+    from pia_writer import FamilyMemberSpec
+
+    cases: list[CaseSpec] = []
+    patterns = ["steady", "max", "half", "sporadic", "declining"]
+    n = 40000
+
+    def earliest_oab(dob: tuple[int, int, int]) -> tuple[int, int]:
+        """Earliest old-age entitlement: age 62, or 62 and 1 month for
+        anyone born after 2 September 1919 (1981 amendments; see
+        PiaParams::earlyAgeOabCal)."""
+        kbirth = (dob[0], dob[1], dob[2] - 1)
+        extra = 1 if kbirth > (1919, 9, 2) else 0
+        return attain_month(dob, 62, extra)
+
+    def summary_qcs(earn: dict[int, float]) -> tuple[int, int]:
+        """(qctottd, qctot51td) for line 95: four quarters for each year
+        with earnings, capped at the 1937-77 and 1951-77 maxima."""
+        pre51 = min(56, 4 * sum(1 for y, v in earn.items() if y < 1951 and v > 0))
+        p5177 = min(
+            108, 4 * sum(1 for y, v in earn.items() if 1951 <= y <= 1977 and v > 0)
+        )
+        return pre51 + p5177, p5177
+
+    # Old-start / PIA-table cohorts: entitlement at 62, 65 and 68.
+    for by in [1900, 1905, 1910, 1915, 1918, 1922, 1925, 1928]:
+        dob = (by, 3, 15)
+        for pat in patterns:
+            for age_label, age in (("62", 62), ("65", 65), ("68", 68)):
+                ent = earliest_oab(dob) if age == 62 else attain_month(dob, age)
+                if ent[0] < 1940:
+                    continue
+                earn = earnings_pattern(pat, by, ent[0] - 1)
+                if not earn or min(earn) > 1950:
+                    continue
+                qct, qc51 = summary_qcs(earn)
+                for ben_label, bendate in (
+                    ("ent", ent), ("+5y", add_months(ent, 60)),
+                ):
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"h1-{by}-{pat}-e{age_label}-{ben_label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                        ent=ent, bendate=bendate, earnings=earn,
+                        qctottd=qct, qctot51td=qc51,
+                    ))
+
+    # Transitional guarantee: eligibility (age 62) in 1979-1983, which is
+    # births 1917-1921, entitled at 62 or at NRA 65.
+    for by in [1917, 1918, 1919, 1920, 1921]:
+        dob = (by, 3, 15)
+        for pat in patterns:
+            for age_label, age in (("62", 62), ("65", 65), ("70", 70)):
+                ent = earliest_oab(dob) if age == 62 else attain_month(dob, age)
+                earn = earnings_pattern(pat, by, ent[0] - 1)
+                if not earn:
+                    continue
+                qct, qc51 = summary_qcs(earn)
+                for ben_label, bendate in (
+                    ("ent", ent), ("+5y", add_months(ent, 60)),
+                ):
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"h1t-{by}-{pat}-e{age_label}-{ben_label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                        ent=ent, bendate=bendate, earnings=earn,
+                        qctottd=qct, qctot51td=qc51,
+                    ))
+
+    # Survivor and disability variants of the same eras, so the historical
+    # methods are exercised outside the old-age path too.
+    for by in [1905, 1912, 1918]:
+        dob = (by, 3, 15)
+        for pat in ["steady", "half"]:
+            for da in (58, 66):
+                dy = by + da
+                if dy < 1940:
+                    continue
+                earn = earnings_pattern(pat, by, dy)
+                if not earn or min(earn) > 1950:
+                    continue
+                qct, qc51 = summary_qcs(earn)
+                death = (dy, 8, 20)
+                wby = by + 3
+                w60 = ((wby + 60) * 12 + (5 - 1) + 1)
+                went = max((w60 // 12, w60 % 12 + 1), (dy, 8))
+                fam = [FamilyMemberSpec("D ", (wby, 6, 10), went)]
+                for ben_label, bendate in (
+                    ("ent", went), ("+5y", add_months(went, 60)),
+                ):
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"h1s-{by}-{pat}-d{da}-{ben_label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=2,
+                        ent=None, bendate=bendate, death=death,
+                        earnings=earn, family=fam,
+                        qctottd=qct, qctot51td=qc51,
+                    ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
     "surv_v1": surv_v1,
     "fam_v1": fam_v1,
+    "hist_v1": hist_v1,
 }
 
 

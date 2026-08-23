@@ -84,6 +84,7 @@ class MethodState:
     year_elig: int = 0  # yearCpi[YEAR_ELIG]
     year_ben: int = 0  # yearCpi[YEAR_BEN]
     year_ent: int = 0  # yearCpi[YEAR_ENT]
+    year_table: int = 0  # yearCpi[YEAR_TABLE]
     windfall: int = WindfallType.NOWINDFALLELIM
     years_total: int = 0  # YOC for special min / WEP
     pia_windfall: float = 0.0

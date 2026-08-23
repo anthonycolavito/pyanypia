@@ -14,6 +14,11 @@ Historical boundaries follow awbidtnf.cpp (2026 TR):
   qc_amt          1978-2026   (pre-1978 QCs are not amount-based)
   yoc_amt_specmin 1937-2026   (special-minimum year-of-coverage amounts)
 
+The 1950s PIB conversion tables are static arrays in the C++ rather than
+anything paramdump computes, so they are parsed straight out of the vendored
+piadata/pib*.cpp with their lengths asserted against the bounds checks in
+each file's getAt().
+
 Run: python3 oracle/tools/extract_data.py
 """
 
@@ -21,9 +26,11 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 
 ORACLE = pathlib.Path(__file__).resolve().parent.parent
 OUT = ORACLE.parent / "src" / "pyanypia" / "params" / "_data2026.py"
+PIADATA = ORACLE / "vendor" / "oactobjs32" / "piadata"
 
 HIST_RANGES = {
     "fq": (1937, 2024),
@@ -34,6 +41,36 @@ HIST_RANGES = {
     "qc_amt": (1978, 2026),
     "yoc_amt_specmin": (1937, 2026),
 }
+
+# (emitted name, source file, C++ qualified symbol, length per getAt bounds)
+PIB_TABLES = [
+    ("PIB50_PIB", "pib50pib.cpp", "Pib50Pib::pib50", 486),
+    ("PIB50_MFB", "pib50mfb.cpp", "Pib50Mfb::mfb50", 486),
+    ("PIB52_AME", "pib52ame.cpp", "Pib52Ame::ame52", 206),
+    ("PIB52_MFB", "pib52mfb.cpp", "Pib52Mfb::mfb52", 486),
+    ("PIB54_AME", "pib54ame.cpp", "Pib54Ame::ame54", 196),
+    ("PIB54_MFB", "pib54mfb.cpp", "Pib54Mfb::mfb54", 486),
+    ("PIB54_PIA", "pib54pia.cpp", "Pib54Pia::pia54", 157),
+    ("PIB58_AME", "pib58ame.cpp", "Pib58Ame::ame58", 63),
+    ("PIB58_PIB", "pib58pib.cpp", "Pib58Pib::pib58", 63),
+]
+
+_NUMBER = re.compile(r"-?\d+\.?\d*(?:[eE][-+]?\d+)?")
+
+
+def parse_cpp_array(filename: str, symbol: str, expected: int) -> list[float]:
+    """Parses `const double <symbol>[] = { ... };` out of a vendored file."""
+    text = (PIADATA / filename).read_text()
+    start = text.index(f"{symbol}[] = {{") + len(f"{symbol}[] = {{")
+    body = text[start:text.index("};", start)]
+    body = re.sub(r"//[^\n]*", "", body)
+    values = [float(m.group()) for m in _NUMBER.finditer(body)]
+    if len(values) != expected:
+        raise SystemExit(
+            f"{filename}: {symbol} has {len(values)} values, expected "
+            f"{expected} (getAt bounds check disagrees with the initializer)"
+        )
+    return values
 
 
 def main() -> None:
@@ -109,12 +146,26 @@ def main() -> None:
                 lines.append(f"    {d[y]!r},  # {y}")
             lines.append(")")
             lines.append("")
+
+    # 1950s PIB conversion tables, indexed from 0 (piadata/pib*.cpp).
+    pib_total = 0
+    for name, filename, symbol, expected in PIB_TABLES:
+        values = parse_cpp_array(filename, symbol, expected)
+        pib_total += len(values)
+        lines.append(f"# {symbol} ({filename}), {expected} entries")
+        lines.append(f"{name} = (")
+        for i in range(0, len(values), 10):
+            row = ", ".join(repr(v) for v in values[i:i + 10])
+            lines.append(f"    {row},")
+        lines.append(")")
+        lines.append("")
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(lines) + "\n")
     n = sum(len(s) for s in hist.values()) + sum(
         len(d) for k in proj.values() for d in k.values()
-    )
-    print(f"wrote {OUT} ({n} values)")
+    ) + pib_total
+    print(f"wrote {OUT} ({n} values, {pib_total} in PIB tables)")
 
 
 if __name__ == "__main__":

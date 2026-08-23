@@ -54,7 +54,9 @@ def run_sweep(name: str) -> None:
         )
     outpath = ORACLE / "goldens" / f"{name}.jsonl"
     with open(outpath, "w") as f:
-        for spec, res in zip(manifest, results):
+        # not strict: a case the oracle rejected outright still needs its
+        # manifest row, and the length mismatch is reported above
+        for spec, res in zip(manifest, results, strict=False):
             res["case_id"] = spec["case_id"]
             f.write(json.dumps(res) + "\n")
     n_err = sum(1 for r in results if "error" in r)
