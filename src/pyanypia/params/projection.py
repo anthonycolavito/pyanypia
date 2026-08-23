@@ -44,6 +44,33 @@ def project_fq(
         fq[y] = round_wage(fq[y - 1] * (fqinc[y] / 100.0 + 1.0))
 
 
+def project_base_after_ad_hoc(
+    base: dict[int, float],
+    fq: dict[int, float],
+    cpi: dict[int, float],
+    last_ad_hoc: int,
+    last: int,
+) -> None:
+    """WageBaseGeneral::projectLC — the years after an ad hoc wage-base
+    window.
+
+    Each one indexes off the last ad hoc base and the wage ratio to two
+    years before it, rather than chaining off the year before, so the
+    rounding to a multiple of $300 is applied once against the anchor
+    instead of accumulating.
+    """
+    anchor = base[last_ad_hoc]
+    for yr in range(last_ad_hoc + 1, last + 1):
+        if cpi.get(yr - 1, 0.0) < 0.1:
+            # no benefit increase: base equals the last one set
+            base[yr] = base[yr - 1]
+            continue
+        factor = fq[yr - 2] / fq[last_ad_hoc - 2]
+        baseun = anchor * factor
+        # rounded to a multiple of $300, and never a decrease
+        base[yr] = max(300.0 * math.floor(baseun / 300.0 + 0.5), base[yr - 1])
+
+
 def project_base(
     base: dict[int, float],
     fq: dict[int, float],

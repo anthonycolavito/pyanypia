@@ -19,7 +19,7 @@ import dataclasses
 from dataclasses import dataclass, field
 
 from pyanypia.dates import Age
-from pyanypia.params import Params, retire_age
+from pyanypia.params import Params, projection, retire_age
 from pyanypia.params.assumptions import Assumptions
 
 # LawChange::phaseType
@@ -146,13 +146,34 @@ class ReformedParams(Params):
             if year in self.cpiinc:
                 self.cpiinc[year] += cola.adjustment
 
-    def adjust_bases(self) -> tuple[int, int]:
+    def project_bases(self) -> None:
+        """WageBaseLC::project — project up to the ad hoc window, drop the
+        ad hoc bases in over whatever was there, then project past them
+        off the last of them rather than chaining."""
         change = self.reform.wage_base
         if change is None:
-            return super().adjust_bases()
+            super().project_bases()
+            return
+        projection.project_base(
+            self.base_oasdi, self.fq, self.cpiinc, 0,
+            self.istart + 1, change.start_year - 1,
+        )
         for year in range(change.start_year, change.end_year + 1):
             self.base_oasdi[year] = change.bases[year]
-        return change.end_year + 1, self.istart + 1
+        projection.project_base_after_ad_hoc(
+            self.base_oasdi, self.fq, self.cpiinc,
+            change.end_year, self.maxyear,
+        )
+        # only the OASDI series has an ad hoc change here; ind 2 and 3,
+        # which also move the 1977-law bases, are not supported
+        projection.project_base(
+            self.base_77, self.fq, self.cpiinc, 2,
+            self.istart + 1, self.maxyear,
+        )
+        projection.project_base(
+            self.base_hi, self.fq, self.cpiinc, 3,
+            self.istart + 1, self.maxyear,
+        )
 
     # ---- parameters the engine asks for ----
 

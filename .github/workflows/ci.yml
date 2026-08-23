@@ -45,5 +45,5 @@ jobs:
       - name: Goldens still match a fresh oracle run
         run: |
           python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
-            hist_v1 special_v1 total_v1 proj_v1 pebs_v1
+            hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1
           git diff --exit-code -- oracle/goldens/

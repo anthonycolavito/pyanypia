@@ -65,21 +65,7 @@ class Params:
         self.base_77 = _series(d.BASE_77, d.BASE_77_FIRST)
         self.base_hi = dict(self.base_oasdi)
         self.base_hi.update(_series(d.BASE_HI, d.BASE_HI_FIRST))
-        # Ad hoc bases replace the projected ones and push the start of
-        # automatic projection past them (PiaParamsLC::updateBases).
-        oasdi_start, base77_start = self.adjust_bases()
-        projection.project_base(
-            self.base_oasdi, self.fq, self.cpiinc, 0,
-            oasdi_start, self.maxyear,
-        )
-        projection.project_base(
-            self.base_77, self.fq, self.cpiinc, 2,
-            base77_start, self.maxyear,
-        )
-        projection.project_base(
-            self.base_hi, self.fq, self.cpiinc, 3,
-            self.istart + 1, self.maxyear,
-        )
+        self.project_bases()
 
         # --- amounts dependent on fq ---
         self.qc_amt = projection.project_qc_amounts(
@@ -114,10 +100,24 @@ class Params:
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
 
-    def adjust_bases(self) -> tuple[int, int]:
-        """Lets a reform set ad hoc wage bases. Returns the first year of
-        automatic projection for the OASDI and old-law series."""
-        return self.istart + 1, self.istart + 1
+    def project_bases(self) -> None:
+        """WageBaseLC::project — projects the three wage-base series.
+
+        Present law projects each of them straight through; a reform
+        setting ad hoc bases overrides this.
+        """
+        projection.project_base(
+            self.base_oasdi, self.fq, self.cpiinc, 0,
+            self.istart + 1, self.maxyear,
+        )
+        projection.project_base(
+            self.base_77, self.fq, self.cpiinc, 2,
+            self.istart + 1, self.maxyear,
+        )
+        projection.project_base(
+            self.base_hi, self.fq, self.cpiinc, 3,
+            self.istart + 1, self.maxyear,
+        )
 
     # ---- accessors mirroring PiaParams ----
 

@@ -101,9 +101,14 @@ def earnings_pattern(kind: str, dob_year: int, last_year: int
         elif kind == "declining":
             frac = max(0.3, 1.5 - 0.02 * (age - 25))
             amt = frac * awi
+        elif kind == "supermax":
+            # deliberately above the taxable maximum, so that a reform
+            # moving the base moves the earnings that count
+            amt = 2.5 * awi
         else:
             raise ValueError(kind)
-        out[y] = round(min(amt, BASE[y]), 2)
+        cap = amt if kind == "supermax" else min(amt, BASE[y])
+        out[y] = round(cap, 2)
     # trim leading/trailing zeros but keep interior zeros (contiguity)
     years = [y for y in sorted(out) if out[y] > 0.0]
     if not years:
@@ -690,6 +695,104 @@ def pebs_v1() -> list[CaseSpec]:
     return cases
 
 
+def reform_v1() -> list[CaseSpec]:
+    """The cases every reform variant is run over.
+
+    Picked so each supported change bites somewhere: cohorts either side
+    of every step in the retirement-age schedule, entitlement at 62 and
+    at 70 so a raised age changes both the reduction and the credit, max
+    earners for the wage base, disability onsets before and after 2010
+    for the dropout rule, and auxiliaries because a changed retirement
+    age moves their reduction factors too.
+    """
+    from pia_writer import FamilyMemberSpec
+
+    cases: list[CaseSpec] = []
+    n = 60000
+
+    # --- retirement, across the whole retirement-age schedule ---------
+    for by in [1935, 1940, 1943, 1950, 1955, 1957, 1960, 1965, 1975,
+               1985, 1995]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        for pat in ["steady", "max", "half", "supermax"]:
+            for label, ent in [
+                ("earliest", add_months(attain_month(dob, 62), 1)),
+                ("nra", attain_month(dob, nra_y, nra_m)),
+                ("70", attain_month(dob, 70)),
+            ]:
+                earn = earnings_pattern(pat, by, ent[0] - 1)
+                if not earn:
+                    continue
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1-{by}-{pat}-{label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                    ent=ent, bendate=ent, earnings=earn,
+                ))
+
+    # --- disability, entitlements either side of 2010 -----------------
+    for by in [1955, 1960, 1970, 1980, 1990]:
+        for pat in ["steady", "supermax"]:
+            for oa in [30, 45, 58]:
+                onset_year = by + oa
+                if onset_year < 1990 or onset_year > 2024:
+                    continue
+                earn = earnings_pattern(pat, by, onset_year)
+                if not earn:
+                    continue
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1d-{by}-{pat}-o{oa}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=(by, 3, 15),
+                    joasdi=3, ent=(onset_year, 12),
+                    bendate=(onset_year, 12), earnings=earn,
+                    onset=(onset_year, 6, 15), waitper=(onset_year, 7),
+                ))
+
+    # --- an aged spouse, whose reduction a raised age changes ---------
+    for by in [1950, 1955, 1960]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        for pat in ["steady", "max"]:
+            earn = earnings_pattern(pat, by, ent[0] - 1)
+            if not earn:
+                continue
+            sby = by + 2
+            s62 = (sby + 62) * 12 + (7 - 1) + 1
+            spouse_ent = max((s62 // 12, s62 % 12 + 1), ent)
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"x1f-{by}-{pat}-spouse62",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=max(spouse_ent, ent), earnings=earn,
+                family=[FamilyMemberSpec("B ", (sby, 7, 20), spouse_ent)],
+            ))
+
+    # --- an aged widow, for the survivor reduction factors ------------
+    for by in [1950, 1960]:
+        for pat in ["steady", "max"]:
+            dy = by + 61
+            earn = earnings_pattern(pat, by, dy)
+            if not earn:
+                continue
+            death_my = (dy, 8)
+            wby = by + 3
+            w60 = (wby + 60) * 12 + (5 - 1) + 1
+            went = max((w60 // 12, w60 % 12 + 1), death_my)
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"x1s-{by}-{pat}-agedwid",
+                ssn=f"9{n:08d}", sex=n % 2, dob=(by, 3, 15),
+                joasdi=2, ent=None, bendate=went,
+                death=(dy, 8, 20), earnings=earn,
+                family=[FamilyMemberSpec("D ", (wby, 6, 10), went)],
+            ))
+
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
@@ -700,6 +803,7 @@ SWEEPS = {
     "total_v1": total_v1,
     "proj_v1": proj_v1,
     "pebs_v1": pebs_v1,
+    "reform_v1": reform_v1,
 }
 
 

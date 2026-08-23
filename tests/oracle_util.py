@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import sys
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -32,6 +33,50 @@ def load_sweep(name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
         assert exp.get("case_id") == spec["case_id"]
         out.append((spec, exp))
     return out
+
+
+def load_reform_sweep(
+    name: str = "reform_v1",
+) -> list[tuple[dict[str, Any], dict[str, Any], str]]:
+    """Returns [(case_spec, oracle_expected, variant), ...].
+
+    The golden holds one block per reform variant over the same cases,
+    so the manifest is joined to each block in turn.
+    """
+    specs = [
+        json.loads(line)
+        for line in open(ORACLE / "cases" / name / "manifest.jsonl")
+    ]
+    expected = [
+        json.loads(line)
+        for line in open(ORACLE / "goldens" / f"{name}.jsonl")
+    ]
+    assert len(expected) % len(specs) == 0, (
+        f"sweep {name}: {len(expected)} rows is not a whole number of "
+        f"blocks of {len(specs)} cases"
+    )
+    out = []
+    for i, exp in enumerate(expected):
+        spec = specs[i % len(specs)]
+        variant = exp["variant"]
+        assert exp["case_id"] == f"{variant}::{spec['case_id']}"
+        out.append((spec, exp, variant))
+    return out
+
+
+def reform_params(variant: str, alt: int = 2):  # type: ignore[no-untyped-def]
+    """The parameters a sweep variant's reform produces."""
+    from pyanypia.params import present_law
+
+    if variant == "present_law":
+        return present_law(alt)
+    if str(ORACLE) not in sys.path:
+        sys.path.insert(0, str(ORACLE))
+    import reform_specs
+
+    from pyanypia.law import reformed_params
+
+    return reformed_params(reform_specs.BY_NAME[variant].reform, alt=alt)
 
 
 def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]

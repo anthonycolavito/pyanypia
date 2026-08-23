@@ -11,6 +11,7 @@ from pyanypia.engine.statement import (
     StatementType,
     calculate_statement,
 )
+from pyanypia.law import Law, Reform
 from pyanypia.params import Params, present_law
 from pyanypia.results import MethodResult, Results, results_from_context
 from pyanypia.worker import (
@@ -29,9 +30,11 @@ __all__ = [
     "Comparison",
     "DisabilityPeriod",
     "FamilyMember",
+    "Law",
     "MethodResult",
     "MonthYear",
     "Params",
+    "Reform",
     "Results",
     "Sex",
     "StatementEstimate",
@@ -97,19 +100,24 @@ class Comparison:
 
 def compare(
     worker: Worker,
-    reform: object | None = None,
+    reform: Reform | None = None,
     *,
     alt: int = 2,
 ) -> Comparison:
     """Computes a worker under present law and under ``reform``.
 
-    The declarative reform layer lands with the LawChange port; until
-    then this refuses a reform rather than silently ignoring it.
+    ``reform=None`` compares present law with itself, which is a way of
+    asking for a baseline in the same shape as a comparison.
     """
-    if reform is not None:
-        raise NotImplementedError(
-            "the reform layer is not available yet; compare() currently "
-            "only accepts reform=None"
-        )
+    from pyanypia.law import reformed_params
+
     baseline = compute(worker, alt=alt)
-    return Comparison(baseline=baseline, reformed=baseline)
+    if reform is None:
+        return Comparison(baseline=baseline, reformed=baseline)
+    if not isinstance(reform, Reform):
+        raise TypeError(
+            f"reform must be a pyanypia.law.Reform, not "
+            f"{type(reform).__name__}"
+        )
+    reformed = compute(worker, params=reformed_params(reform, alt=alt))
+    return Comparison(baseline=baseline, reformed=reformed)

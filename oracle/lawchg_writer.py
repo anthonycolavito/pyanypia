@@ -97,6 +97,22 @@ def bend_point_fraction(proportion: float, start_year: int, end_year: int,
                   extras=[f"{proportion}"])
 
 
+def bend_point_minus_constant(constant: float, start_year: int,
+                              end_year: int, phase_type: int = 0) -> Change:
+    """Bend points rise at the wage rate less `constant` percentage
+    points (LawChangeBPMINCONST, which reads it as the 4th field)."""
+    return Change("BPMINCONST", 1, start_year, end_year, phase_type,
+                  extras=[f"{constant}"])
+
+
+def di_dropout_five(start_year: int, end_year: int,
+                    phase_type: int = 0) -> Change:
+    """A flat five dropout years in place of the one-for-five rule.
+    LawChangeDIDROP5 has no read() of its own, so the base class reads
+    just the start/end/phase line."""
+    return Change("DIDROP5", 1, start_year, end_year, phase_type)
+
+
 def wage_base_change(bases: dict[int, float], start_year: int,
                      end_year: int, phase_type: int = 1) -> Change:
     """Ad hoc OASDI wage bases for start_year..end_year."""
