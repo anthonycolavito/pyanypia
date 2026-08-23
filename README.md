@@ -128,6 +128,40 @@ open("out.pia", "w").write(write_pia(cases))
 Files written by pyanypia are read identically by the official calculator —
 that equivalence is a test, run over every case in the suites below.
 
+## Reforms
+
+`compare()` computes a worker under present law and under a reform, and
+reports the difference:
+
+```python
+from pyanypia.law import Reform, NraChange
+
+reform = Reform(nra=NraChange(1990, 2100, variant=1))  # hold the FRA at 65
+print(pia.compare(worker, reform).detail())
+```
+```
+PIA         3399.90 ->    3399.90  (+0.00)
+benefit     3399.00 ->    3898.00  (+499.00, +14.7%)
+```
+
+The PIA is untouched and the benefit is not: this worker claims at 67 and
+1 month, which present law reduces nothing and credits nothing, but which
+is fifteen months of delayed retirement credit once the full retirement
+age is 65.
+
+Four changes are supported, each mapped to the LawChange class it ports
+and each validated against the oracle over the `reform_v1` sweep:
+
+| `Reform` field | LawChange | What it does |
+|---|---|---|
+| `nra` | `NRACHANGE` | Full retirement age: held at 65, the 66-to-67 plateau removed, or rising after 2011 — with the reduction slopes past 67 and 69 that come with it |
+| `cola` | `COLACHANGE` | Benefit increases shifted by a percentage point over a span |
+| `wage_base` | `WAGEBASECHG` | Ad hoc contribution and benefit bases, after which projection resumes off the last of them |
+| `di_dropout_five` | `DIDROP5` | A flat five dropout years in place of the one-for-five rule |
+
+Anything else raises rather than returning a present-law answer under a
+reform's name — see [Limitations](#limitations) for why the list is short.
+
 ## Fidelity
 
 The differential suites, all penny-exact against the compiled oracle:
@@ -143,6 +177,7 @@ The differential suites, all penny-exact against the compiled oracle:
 | `fam_v1` | 72 | Retirement with spouses and children |
 | `special_v1` | 60 | Disability guarantee, child-care dropout years |
 | `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
+| `reform_v1` | 1,600 | 160 cases under present law and nine reform variants |
 
 Each case is compared field by field: insured status, eligibility year, the
 AIME/PIA/MFB of every applicable method, the winning method, the family
@@ -155,14 +190,32 @@ To rebuild and re-verify from source:
 make -C oracle/build all             # needs clang++ and Boost headers
 python oracle/cases/generate.py all
 python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
-    hist_v1 special_v1 total_v1 proj_v1 pebs_v1
+    hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1
 pytest
 ```
 
 ## Limitations
 
-- **Policy reforms** (the calculator's LawChange machinery) are not
-  implemented yet. `compare()` refuses a reform rather than ignoring it.
+- **Most policy reforms are out of scope.** Of the calculator's forty
+  LawChange types, batch `anypiab` visibly honours only a handful; the
+  four listed under [Reforms](#reforms) are ported and validated, and
+  `Reform` rejects anything else rather than quietly returning present-law
+  answers under a reform's name. Two cases are worth naming. A reformed
+  aged-spouse factor (`WIFEFACTOR`) never reaches the answer, because
+  `PiaCal` asks for `factorAgedSpouseCalPL()`, the present-law factor. And
+  the bend-point reforms (`BPFRACWAGE`, `BPMINCONST`) cannot be computed
+  at all: `PiaParamsLC` builds the bend-point wage series in its
+  constructor, which runs before `AnypiabDoc` calls `setHistFqinc()`, so
+  `setFqBppia()` reads a benefit-increase series of all zeros and nothing
+  recomputes it afterwards. Every eligibility year from the change onward
+  is left with the bend points of the year before it began, whatever
+  proportion was requested — asking for the full wage rate, which should
+  reproduce present law exactly, moves a 2005 eligibility from $1,500.10
+  to $1,137.80 — and where the span ends early the projection past it
+  divides zero by zero and returns NaN. The official `anypiabdoc.cpp`
+  constructs `PiaParamsAny` in the same order, so this is the calculator's
+  behaviour rather than an artefact of how we drive it. Since there is no
+  answer to check against, pyanypia does not offer one.
 - **Railroad earnings** are not credited. A `.pia` file containing them
   is refused rather than read with the railroad component dropped.
 - **Statement estimates below full retirement age** cannot be checked

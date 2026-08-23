@@ -25,6 +25,7 @@ def test_tour_runs(capsys) -> None:  # type: ignore[no-untyped-def]
         "A Social Security Statement",
         "Many workers at once",
         "Reading and writing .pia case files",
+        "A worker under present law and under a reform",
     ):
         assert marker in out
     assert "PIA $" in out

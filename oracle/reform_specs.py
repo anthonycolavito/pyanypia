@@ -28,8 +28,6 @@ import lawchg_writer as lcw  # noqa: E402
 
 from pyanypia.law import (  # noqa: E402
     FOR_EVERYONE,
-    BendPointFraction,
-    BendPointMinusConstant,
     ColaChange,
     DiDropoutFive,
     NraChange,
@@ -131,60 +129,31 @@ VARIANTS: list[ReformVariant] = [
 ]
 
 
-# Two supported change types cannot be validated against this oracle at
-# all. PiaParamsLC builds the bend-point wage series in its constructor,
-# which runs before AnypiabDoc calls setHistFqinc(), so setFqBppia() sees
-# a fqinc series of all zeros and nothing ever recomputes it. Every
-# eligibility year from the start of the change onward therefore gets the
+# Two of the calculator's change types are deliberately absent, and
+# pyanypia.law.Reform rejects them. PiaParamsLC builds the bend-point wage
+# series in its constructor, which runs before AnypiabDoc calls
+# setHistFqinc(), so setFqBppia() sees a fqinc of all zeros and nothing
+# recomputes it. Every eligibility year from the change onward keeps the
 # bend points of the year before it began, whatever proportion was asked
-# for -- a proportion of 1.0, which should reproduce present law exactly,
-# moves a 2005 eligibility from 1500.10 to 1137.80 -- and where the span
-# ends early the projection past it divides 0 by 0 and returns NaN.
+# for, and where the span ends early the projection past it divides 0 by 0
+# and returns NaN. The official anypiabdoc.cpp constructs PiaParamsAny in
+# the same order, so this is the calculator's behaviour, not our driver's.
 #
-# The official anypiabdoc.cpp constructs PiaParamsAny in the same order,
-# so this is the calculator's behaviour rather than our instrumentation.
-# pyanypia implements what the C++ intends, off properly projected wages,
-# and so cannot agree with it. These stay defined, and out of the sweep.
-UNVALIDATABLE: list[ReformVariant] = [
-    ReformVariant(
-        "bp_half_wage",
-        [lcw.bend_point_fraction(0.5, 1990, 2100)],
-        Reform(bend_point_fraction=BendPointFraction(1990, 2100,
-                                                     proportion=0.5)),
-        "bend points growing at half the wage rate",
-    ),
-    ReformVariant(
-        "bp_three_quarter_window",
-        [lcw.bend_point_fraction(0.75, 2010, 2040)],
-        Reform(bend_point_fraction=BendPointFraction(2010, 2040,
-                                                     proportion=0.75)),
-        "three quarters of it for 2010-2040, then wages again",
-    ),
-    ReformVariant(
-        "bp_wage_minus_half",
-        [lcw.bend_point_minus_constant(0.5, 1990, 2100)],
-        Reform(bend_point_minus=BendPointMinusConstant(1990, 2100,
-                                                       constant=0.5)),
-        "bend points growing at wages less half a point",
-    ),
-    ReformVariant(
-        "bp_wage_minus_one_window",
-        [lcw.bend_point_minus_constant(1.0, 2010, 2040)],
-        Reform(bend_point_minus=BendPointMinusConstant(2010, 2040,
-                                                       constant=1.0)),
-        "less a full point for 2010-2040, then wages again",
-    ),
-]
+# To see it, run the oracle over these cases with
+#
+#     lcw.bend_point_fraction(1.0, 1990, 2100)
+#
+# which asks for bend points at the full wage rate and so should reproduce
+# present law exactly. A 2005 eligibility comes back 1137.80 against
+# present law's 1500.10, and 0.5 gives the identical figure.
+UNSUPPORTED = ("BPFRACWAGE", "BPMINCONST")
 
-BY_NAME = {v.name: v for v in [*VARIANTS, *UNVALIDATABLE]}
+BY_NAME = {v.name: v for v in VARIANTS}
 
 # A reform's changes must all be types pyanypia claims to support, or the
 # sweep is testing the oracle against a Reform that means something else.
-_SUPPORTED = {
-    "NRACHANGE", "COLACHANGE", "BPFRACWAGE", "BPMINCONST", "DIDROP5",
-    "WAGEBASECHG",
-}
-for _v in [*VARIANTS, *UNVALIDATABLE]:
+_SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG"}
+for _v in VARIANTS:
     _unsupported = {c.name for c in _v.changes} - _SUPPORTED
     if _unsupported:
         raise AssertionError(f"{_v.name}: unsupported {sorted(_unsupported)}")

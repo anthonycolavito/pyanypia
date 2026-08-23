@@ -75,7 +75,10 @@ class ColaChange(Change):
 @dataclass(frozen=True)
 class BendPointFraction(Change):
     """Grow the PIA bend points at `proportion` of the wage rate rather
-    than the full rate (LawChangeBPFRACWAGE)."""
+    than the full rate (LawChangeBPFRACWAGE).
+
+    Defined but not supported -- see `Reform` for why.
+    """
 
     proportion: float = 1.0
 
@@ -83,7 +86,10 @@ class BendPointFraction(Change):
 @dataclass(frozen=True)
 class BendPointMinusConstant(Change):
     """Grow the PIA bend points at the wage rate less `constant`
-    percentage points (LawChangeBPMINCONST)."""
+    percentage points (LawChangeBPMINCONST).
+
+    Defined but not supported -- see `Reform` for why.
+    """
 
     constant: float = 0.0
 
@@ -112,7 +118,18 @@ class WageBaseChange(Change):
 
 @dataclass(frozen=True)
 class Reform:
-    """A set of changes from present law."""
+    """A set of changes from present law.
+
+    The two bend-point changes are defined above but rejected here. The
+    calculator cannot compute them: `PiaParamsLC` builds the bend-point
+    wage series in its constructor, which runs before `AnypiabDoc` calls
+    `setHistFqinc()`, so `setFqBppia()` reads a benefit-increase series of
+    all zeros and nothing recomputes it afterwards. Every eligibility year
+    from the change onward is left with the bend points of the year before
+    it began, whatever proportion was asked for, and where the span ends
+    early the projection past it divides zero by zero. Since there is no
+    answer to check against, pyanypia does not offer one.
+    """
 
     nra: NraChange | None = None
     cola: ColaChange | None = None
@@ -120,6 +137,21 @@ class Reform:
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
+
+    def __post_init__(self) -> None:
+        unsupported = [
+            name for name in ("bend_point_fraction", "bend_point_minus")
+            if getattr(self, name) is not None
+        ]
+        if unsupported:
+            raise ValueError(
+                f"{', '.join(unsupported)}: bend-point reforms are not "
+                f"supported, because the calculator computes them from a "
+                f"wage series it builds before it knows any wages -- the "
+                f"proportion asked for makes no difference to its answer, "
+                f"and past a closed span it returns NaN. See Reform's "
+                f"docstring."
+            )
 
     def __bool__(self) -> bool:
         return any(
@@ -241,33 +273,6 @@ class ReformedParams(Params):
         return _reduction_beyond_67(
             months_ardri, retire_age.AR_MONTHLY_SPOUSE_62_65
         )
-
-    def build_fq_bppia(self) -> dict[int, float]:
-        """PiaParamsLC::setFqBppia — the bend points get their own wage
-        series, growing more slowly during the change and at the real
-        wage rate again afterwards."""
-        frac = self.reform.bend_point_fraction
-        minus = self.reform.bend_point_minus
-        if frac is None and minus is None:
-            return super().build_fq_bppia()
-        change: Change = frac if frac is not None else minus  # type: ignore[assignment]
-        # bend points for eligibility year Y index off wages in Y-2
-        first = change.start_year - 2
-        last = min(self.maxyear, change.end_year - 2)
-        out = dict(self.fq)
-        temp = self.fq[first - 1]
-        for year in range(first, last + 1):
-            if frac is not None:
-                factor = 1.0 + frac.proportion * self.fqinc[year] / 100.0
-            else:
-                assert minus is not None
-                factor = 1.0 + (self.fqinc[year] - minus.constant) / 100.0
-            temp *= factor
-            out[year] = temp
-        for year in range(last + 1, self.maxyear + 1):
-            temp *= self.fq[year] / self.fq[year - 1]
-            out[year] = temp
-        return out
 
     def n_drop_override(self, ent_year: int, elig_year: int) -> int | None:
         """PiaCalLC::nCal — a flat five dropout years."""

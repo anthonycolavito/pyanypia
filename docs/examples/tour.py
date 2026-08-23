@@ -143,6 +143,30 @@ def pia_files() -> None:
     print()
 
 
+def reforms() -> None:
+    print("=" * 68)
+    print("A worker under present law and under a reform")
+    print("=" * 68)
+    from pyanypia.law import ColaChange, NraChange, Reform
+
+    worker = pia.Worker(
+        dob=date(1960, 3, 15),
+        sex=pia.Sex.FEMALE,
+        benefit_type=pia.BenefitType.OLD_AGE,
+        earnings={year: 52_000.0 for year in range(1985, 2026)},
+        entitlement=pia.MonthYear(2027, 4),
+    )
+    for label, reform in (
+        ("full retirement age held at 65",
+         Reform(nra=NraChange(1990, 2100, variant=1))),
+        ("benefit increases half a point smaller",
+         Reform(cola=ColaChange(1990, 2100, 1, adjustment=-0.5))),
+    ):
+        print(label)
+        print(pia.compare(worker, reform).detail())
+        print()
+
+
 def main() -> None:
     basic_retirement()
     claiming_ages()
@@ -150,6 +174,7 @@ def main() -> None:
     statement()
     batch()
     pia_files()
+    reforms()
 
 
 if __name__ == "__main__":
