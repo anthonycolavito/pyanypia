@@ -113,6 +113,14 @@ def di_dropout_five(start_year: int, end_year: int,
     return Change("DIDROP5", 1, start_year, end_year, phase_type)
 
 
+def age65_comp(years: int, step: int, start_year: int, end_year: int,
+               phase_type: int = 0) -> Change:
+    """Move the computation point from 62 towards 65. The indicator is
+    how many years it moves; the step phases it in."""
+    return Change("AGE65COMP", years, start_year, end_year, phase_type,
+                  extras=[str(step)])
+
+
 def new_special_min(amount: float, start_year: int, end_year: int,
                     phase_type: int = 0) -> Change:
     """A new special-minimum amount per year of coverage. Indicator 1 is

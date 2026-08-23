@@ -107,6 +107,11 @@ class Params:
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
 
+    def comp_point_shift(self, elig_year: int, benefit_year: int) -> int:
+        """Years to move the computation point past 62, which only a
+        reform does (PiaCalLC::nelapsed2Cal)."""
+        return 0
+
     def spec_min_amount(self, year: int) -> float:
         """PiaParams::specMinAmountCalPL — the special minimum's amount
         per year of coverage, $11.50 since 1979."""

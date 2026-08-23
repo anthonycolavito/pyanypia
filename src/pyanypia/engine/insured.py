@@ -403,14 +403,32 @@ def full_ins_date_cal(ctx: CalcContext) -> MonthYear:
 # ---- elapsed years / computation period ----
 
 
+def _shifted_elig_year(ctx: CalcContext, non_freeze: bool) -> int | None:
+    """The eligibility year a moved computation point gives, or None when
+    no reform moves it (PiaCalLC::nelapsed2Cal)."""
+    if ctx.elig_date is None:
+        return None
+    benefit = ctx.worker.benefit_date
+    shift = ctx.params.comp_point_shift(
+        ctx.elig_date.year, benefit.year if benefit is not None else 0
+    )
+    if shift == 0:
+        return None
+    year = elig_year_cal1(ctx, shift).year
+    return elig_year_cal3(ctx, year) if non_freeze else elig_year_cal2(ctx, year)
+
+
 def nelapsed2_cal(ctx: CalcContext, ent_date: MonthYear) -> int:
+    shifted = _shifted_elig_year(ctx, non_freeze=False)
+    elig_year = ctx.elig_year if shifted is None else shifted
+    # the 1960 test keeps reading the unshifted year, as the C++ does
     elap2 = (
         1960
         if (
             ent_date.year > 1960 and ctx.elig_year < 1961
             and ctx.worker.valdi == 0
         )
-        else ctx.elig_year - 1
+        else elig_year - 1
     )
     if ctx.ioasdi == BenefitType.SURVIVOR:
         assert ctx.worker.death_date is not None
@@ -437,13 +455,15 @@ def nelapsed_cal(ctx: CalcContext, comp: CompPeriod, ent: MonthYear) -> None:
 
 
 def nelapsed2_non_freeze_cal(ctx: CalcContext, ent_date: MonthYear) -> int:
+    shifted = _shifted_elig_year(ctx, non_freeze=True)
+    elig_year = ctx.elig_year_non_freeze if shifted is None else shifted
     elap2 = (
         1960
         if (
             ent_date.year > 1960 and ctx.elig_year_non_freeze < 1961
             and ctx.worker.valdi == 0
         )
-        else ctx.elig_year_non_freeze - 1
+        else elig_year - 1
     )
     if ctx.ioasdi == BenefitType.SURVIVOR:
         assert ctx.worker.death_date is not None

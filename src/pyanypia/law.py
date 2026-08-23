@@ -101,6 +101,25 @@ class DiDropoutFive(Change):
 
 
 @dataclass(frozen=True)
+class Age65ComputationPoint(Change):
+    """Move the computation point from age 62 towards 65, so that more
+    years count towards the elapsed years (LawChangeAGE65COMP).
+
+    `years` is how far it ends up moving, one to three; `step` phases it
+    in, a year at a time every `step` years of eligibility.
+    """
+
+    years: int = 1
+    step: int = 1
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.years <= 3:
+            raise ValueError(f"years must be 1 to 3, not {self.years}")
+        if self.step < 1:
+            raise ValueError(f"step must be at least 1, not {self.step}")
+
+
+@dataclass(frozen=True)
 class SpecialMinimum(Change):
     """Replace the special minimum's amount per year of coverage
     (LawChangeNEWSPECMIN).
@@ -149,6 +168,7 @@ class Reform:
     cola: ColaChange | None = None
     wage_base: WageBaseChange | None = None
     special_min: SpecialMinimum | None = None
+    comp_point: Age65ComputationPoint | None = None
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
@@ -289,6 +309,17 @@ class ReformedParams(Params):
             months_ardri, retire_age.AR_MONTHLY_SPOUSE_62_65
         )
 
+    def comp_point_shift(self, elig_year: int, benefit_year: int) -> int:
+        """PiaCalLC::nelapsed2Cal — the phase-in, capped at the change's
+        own number of years."""
+        change = self.reform.comp_point
+        if change is None or not change.is_effective(elig_year, benefit_year):
+            return 0
+        return min(
+            _trunc_div(elig_year - change.start_year, change.step) + 1,
+            change.years,
+        )
+
     def spec_min_amount(self, year: int) -> float:
         """PiaParamsLC::specMinAmountCal — the new amount applies from its
         first year on, keyed on the year alone rather than on
@@ -310,6 +341,14 @@ class ReformedParams(Params):
         if ent_year >= change.start_year and elig_year >= change.start_year - 2:
             return 5
         return None
+
+
+def _trunc_div(numerator: int, denominator: int) -> int:
+    """C++ integer division, which truncates towards zero where Python
+    floors. They differ only for a negative numerator, which a change
+    effective for everyone rather than for new eligibles can produce."""
+    quotient = abs(numerator) // denominator
+    return -quotient if numerator < 0 else quotient
 
 
 def _reduction_beyond_67(months_ardri: int, monthly_62_65: float) -> float:
@@ -362,6 +401,7 @@ def reformed_params(reform: Reform, *, alt: int = 2) -> Params:
 __all__ = [
     "FOR_EVERYONE",
     "FOR_NEW_ELIGIBLES",
+    "Age65ComputationPoint",
     "BendPointFraction",
     "BendPointMinusConstant",
     "Change",
