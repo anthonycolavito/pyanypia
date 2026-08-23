@@ -506,6 +506,9 @@ def n_cal(ctx: CalcContext, comp: CompPeriod, ent_date: MonthYear) -> None:
     )
     if oa_dib_rule or di_rule:
         comp.n_drop = min(comp.n_elapsed // 5, 5)
+    override = ctx.params.n_drop_override(ent_date.year, ctx.elig_year)
+    if override is not None:
+        comp.n_drop = override
     comp.n = comp.n_elapsed - comp.n_drop
     if comp.n < 2:
         comp.n = 2

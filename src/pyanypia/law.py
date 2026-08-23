@@ -1,0 +1,322 @@
+"""Policy reforms, as declarative objects (LawChange / PiaParamsLC).
+
+A `Reform` names the changes from present law; `Law` pairs it with an
+assumption set and produces the parameters the engine computes against.
+Nothing about the engine changes — a reform reaches it the same way the
+C++ does, by supplying a parameter set that answers differently.
+
+Each change carries the years it applies to and whether it takes effect
+for new eligibles only or for everyone (LawChange::isEffective).
+
+Only the changes listed here are supported. Passing an unsupported one is
+an error rather than a silent no-op, because a reform that is quietly
+ignored produces present-law answers under a reform's name.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from dataclasses import dataclass, field
+
+from pyanypia.dates import Age
+from pyanypia.params import Params, retire_age
+from pyanypia.params.assumptions import Assumptions
+
+# LawChange::phaseType
+FOR_NEW_ELIGIBLES = 0
+FOR_EVERYONE = 1
+
+# LawChangeNRACHANGE
+NRA_AGE_AR_CHANGE = Age(69, 0)
+NRA_AR_MONTHLY_67_69 = 3.0 / 800.0
+NRA_AR_MONTHLY_69_PLUS = 1.0 / 300.0
+
+MAX_MONTHS_AR_62_67 = retire_age.AGE_67 - retire_age.AGE_62
+MAX_MONTHS_AR_62_65 = retire_age.AGE_65 - retire_age.AGE_62
+MAX_MONTHS_AR_65_67 = retire_age.AGE_67 - retire_age.AGE_65
+
+
+@dataclass(frozen=True)
+class Change:
+    """One change from present law, over a span of years."""
+
+    start_year: int
+    end_year: int
+    phase_type: int = FOR_NEW_ELIGIBLES
+
+    def is_effective(self, elig_year: int, benefit_year: int) -> bool:
+        """LawChange::isEffective — a change for new eligibles keys on the
+        eligibility year, one for everyone on the benefit year."""
+        year = elig_year if self.phase_type == FOR_NEW_ELIGIBLES else benefit_year
+        return self.start_year <= year <= self.end_year
+
+
+@dataclass(frozen=True)
+class NraChange(Change):
+    """Change the full retirement age.
+
+    `variant` 1 holds it at 65; 2 removes the plateau between 66 and 67;
+    3 also raises it after 2011. Variants 2 and 3 additionally reduce
+    benefits beyond age 67 at 3/8 of a percent a month, and beyond 69 at
+    1/3 of a percent.
+    """
+
+    variant: int = 1
+
+
+@dataclass(frozen=True)
+class ColaChange(Change):
+    """Add `adjustment` percentage points to each benefit increase in the
+    span — negative to trim them."""
+
+    adjustment: float = 0.0
+
+
+@dataclass(frozen=True)
+class BendPointFraction(Change):
+    """Grow the PIA bend points at `proportion` of the wage rate rather
+    than the full rate (LawChangeBPFRACWAGE)."""
+
+    proportion: float = 1.0
+
+
+@dataclass(frozen=True)
+class BendPointMinusConstant(Change):
+    """Grow the PIA bend points at the wage rate less `constant`
+    percentage points (LawChangeBPMINCONST)."""
+
+    constant: float = 0.0
+
+
+@dataclass(frozen=True)
+class DiDropoutFive(Change):
+    """Give every computation five dropout years rather than the
+    one-for-five disability rule (LawChangeDIDROP5)."""
+
+
+@dataclass(frozen=True)
+class WageBaseChange(Change):
+    """Replace the OASDI contribution and benefit base for the years in
+    the span; automatic projection resumes after them."""
+
+    bases: dict[int, float] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        missing = [
+            y for y in range(self.start_year, self.end_year + 1)
+            if y not in self.bases
+        ]
+        if missing:
+            raise ValueError(f"wage base missing for years {missing}")
+
+
+@dataclass(frozen=True)
+class Reform:
+    """A set of changes from present law."""
+
+    nra: NraChange | None = None
+    cola: ColaChange | None = None
+    wage_base: WageBaseChange | None = None
+    bend_point_fraction: BendPointFraction | None = None
+    bend_point_minus: BendPointMinusConstant | None = None
+    di_dropout_five: DiDropoutFive | None = None
+
+    def __bool__(self) -> bool:
+        return any(
+            getattr(self, f.name) is not None
+            for f in dataclasses.fields(self)
+        )
+
+
+class ReformedParams(Params):
+    """Present-law parameters with a reform applied (PiaParamsLC)."""
+
+    def __init__(self, assumptions: Assumptions, reform: Reform) -> None:
+        self.reform = reform
+        super().__init__(assumptions)
+
+    # ---- construction-time hooks ----
+
+    def adjust_cpiinc(self) -> None:
+        cola = self.reform.cola
+        if cola is None:
+            return
+        last = min(self.maxyear, cola.end_year)
+        for year in range(cola.start_year, last + 1):
+            if year in self.cpiinc:
+                self.cpiinc[year] += cola.adjustment
+
+    def adjust_bases(self) -> tuple[int, int]:
+        change = self.reform.wage_base
+        if change is None:
+            return super().adjust_bases()
+        for year in range(change.start_year, change.end_year + 1):
+            self.base_oasdi[year] = change.bases[year]
+        return change.end_year + 1, self.istart + 1
+
+    # ---- parameters the engine asks for ----
+
+    def full_ret_age(self, elig_year: int) -> Age:
+        """PiaParamsLC::fullRetAgeCal."""
+        nra = self.reform.nra
+        if nra is None:
+            return super().full_ret_age(elig_year)
+        if nra.variant == 1:
+            return retire_age.AGE_65
+        if elig_year < 2000:
+            return retire_age.AGE_65
+        if elig_year < 2005:
+            return Age(65, 2 * (elig_year - 1999))
+        if elig_year < 2006:
+            return Age(66, 0)
+        if elig_year < 2011:
+            return Age(66, 2 * (elig_year - 2005))
+        if nra.variant == 2:
+            return retire_age.AGE_67
+        # variant 3 keeps rising: one month per two years
+        months = (elig_year - 2011) // 2
+        return Age(67 + months // 12, months % 12)
+
+    def full_ret_age_di(self, elig_year: int, current_year: int) -> Age:
+        """PiaParamsLC::fullRetAgeCalDI — a change does not reach benefit
+        calculations until 2006."""
+        if self.reform.nra is not None and current_year > 2005:
+            return self.full_ret_age(elig_year)
+        return super().full_ret_age_di(elig_year, current_year)
+
+    def max_dib_age(self, year: int) -> Age:
+        """PiaParamsLC::maxDibAge."""
+        nra = self.reform.nra
+        if nra is None:
+            return super().max_dib_age(year)
+        if nra.variant == 1:
+            return retire_age.AGE_65
+        if year < 2003:
+            return retire_age.AGE_65
+        if year < 2008:
+            return Age(65, 2 * (year - 2002))
+        if year < 2010:
+            return Age(66, 0)
+        if year < 2015:
+            return Age(66, 2 * (year - 2009))
+        if nra.variant == 2:
+            return retire_age.AGE_67
+        years = 67 + (year - 2015) // 25
+        year25 = 2016 + (years - 67) * 25
+        return Age(years, max(0, (year - year25) // 2))
+
+    def factor_ar(self, months_ardri: int) -> float:
+        """PiaParamsLC::factorArCal."""
+        if self.reform.nra is None or months_ardri <= MAX_MONTHS_AR_62_67:
+            return super().factor_ar(months_ardri)
+        return _reduction_beyond_67(
+            months_ardri, retire_age.AR_MONTHLY_OAB_62_65
+        )
+
+    def factor_ar_aged_spouse(self, months_ardri: int) -> float:
+        """PiaParamsLC::factorArAgedSpouseCal."""
+        if self.reform.nra is None or months_ardri <= MAX_MONTHS_AR_62_67:
+            return super().factor_ar_aged_spouse(months_ardri)
+        return _reduction_beyond_67(
+            months_ardri, retire_age.AR_MONTHLY_SPOUSE_62_65
+        )
+
+    def build_fq_bppia(self) -> dict[int, float]:
+        """PiaParamsLC::setFqBppia — the bend points get their own wage
+        series, growing more slowly during the change and at the real
+        wage rate again afterwards."""
+        frac = self.reform.bend_point_fraction
+        minus = self.reform.bend_point_minus
+        if frac is None and minus is None:
+            return super().build_fq_bppia()
+        change: Change = frac if frac is not None else minus  # type: ignore[assignment]
+        # bend points for eligibility year Y index off wages in Y-2
+        first = change.start_year - 2
+        last = min(self.maxyear, change.end_year - 2)
+        out = dict(self.fq)
+        temp = self.fq[first - 1]
+        for year in range(first, last + 1):
+            if frac is not None:
+                factor = 1.0 + frac.proportion * self.fqinc[year] / 100.0
+            else:
+                assert minus is not None
+                factor = 1.0 + (self.fqinc[year] - minus.constant) / 100.0
+            temp *= factor
+            out[year] = temp
+        for year in range(last + 1, self.maxyear + 1):
+            temp *= self.fq[year] / self.fq[year - 1]
+            out[year] = temp
+        return out
+
+    def n_drop_override(self, ent_year: int, elig_year: int) -> int | None:
+        """PiaCalLC::nCal — a flat five dropout years."""
+        change = self.reform.di_dropout_five
+        if change is None:
+            return None
+        if ent_year >= change.start_year and elig_year >= change.start_year - 2:
+            return 5
+        return None
+
+
+def _reduction_beyond_67(months_ardri: int, monthly_62_65: float) -> float:
+    """The reduction factor once a raised full retirement age pushes the
+    reduction past 60 months: 3/8 of a percent a month to age 69, then
+    1/3 of a percent."""
+    max_months_lc = NRA_AGE_AR_CHANGE - retire_age.AGE_62
+    base = (
+        1.0
+        - float(MAX_MONTHS_AR_62_65) * monthly_62_65
+        - float(MAX_MONTHS_AR_65_67) * retire_age.AR_MONTHLY_65_67
+    )
+    if months_ardri <= max_months_lc:
+        excess = months_ardri - MAX_MONTHS_AR_62_67
+        return base - float(excess) * NRA_AR_MONTHLY_67_69
+    excess = months_ardri - max_months_lc
+    months_67_69 = max_months_lc - MAX_MONTHS_AR_62_67
+    return (
+        base
+        - float(months_67_69) * NRA_AR_MONTHLY_67_69
+        - float(excess) * NRA_AR_MONTHLY_69_PLUS
+    )
+
+
+class Law:
+    """An assumption set plus a reform, producing engine parameters."""
+
+    def __init__(self, params: Params, reform: Reform | None = None) -> None:
+        self.params = params
+        self.reform = reform or Reform()
+
+    @classmethod
+    def present_law(cls, alt: int = 2) -> Law:
+        from pyanypia.params import present_law as _present_law
+
+        return cls(_present_law(alt))
+
+    def apply(self, reform: Reform, *, alt: int = 2) -> Law:
+        """This law with `reform` applied."""
+        return Law(
+            ReformedParams(Assumptions.tr_alternative(alt), reform), reform
+        )
+
+
+def reformed_params(reform: Reform, *, alt: int = 2) -> Params:
+    """Present-law parameters under `alt` with `reform` applied."""
+    return ReformedParams(Assumptions.tr_alternative(alt), reform)
+
+
+__all__ = [
+    "FOR_EVERYONE",
+    "FOR_NEW_ELIGIBLES",
+    "BendPointFraction",
+    "BendPointMinusConstant",
+    "Change",
+    "ColaChange",
+    "DiDropoutFive",
+    "Law",
+    "NraChange",
+    "Reform",
+    "ReformedParams",
+    "WageBaseChange",
+    "reformed_params",
+]

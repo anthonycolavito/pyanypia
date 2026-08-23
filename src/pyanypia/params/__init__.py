@@ -47,24 +47,34 @@ class Params:
         projection.project_fq(
             self.fq, self.fqinc, self.istart - 1, self.maxyear
         )
+        # The PIA bend points index off their own wage series, which a
+        # reform can grow differently (PiaParamsLC::setFqBppia). The MFB
+        # bend points always use the real one.
+        self.fq_bppia = self.build_fq_bppia()
 
         # --- benefit increases (cpiinc) ---
         self.cpiinc = _series(d.CPIINC, d.CPIINC_FIRST)  # through istart-1
         self.cpiinc.update(assumptions.biproj)  # istart .. maxyear
         self.catchup = dict(assumptions.catchup)
+        # A reform changes benefit increases here, before anything that
+        # depends on them is projected (PiaParamsLC::setAltCpiinc).
+        self.adjust_cpiinc()
 
         # --- wage bases ---
         self.base_oasdi = _series(d.BASE_OASDI, d.BASE_OASDI_FIRST)
         self.base_77 = _series(d.BASE_77, d.BASE_77_FIRST)
         self.base_hi = dict(self.base_oasdi)
         self.base_hi.update(_series(d.BASE_HI, d.BASE_HI_FIRST))
+        # Ad hoc bases replace the projected ones and push the start of
+        # automatic projection past them (PiaParamsLC::updateBases).
+        oasdi_start, base77_start = self.adjust_bases()
         projection.project_base(
             self.base_oasdi, self.fq, self.cpiinc, 0,
-            self.istart + 1, self.maxyear,
+            oasdi_start, self.maxyear,
         )
         projection.project_base(
             self.base_77, self.fq, self.cpiinc, 2,
-            self.istart + 1, self.maxyear,
+            base77_start, self.maxyear,
         )
         projection.project_base(
             self.base_hi, self.fq, self.cpiinc, 3,
@@ -89,6 +99,26 @@ class Params:
             self._specmin_mfb_2001,
         ) = projection.project_special_min(self.cpiinc, self.maxyear)
 
+    # ---- reform hooks (no-ops under present law) ----
+
+    def build_fq_bppia(self) -> dict[int, float]:
+        """The wage series the PIA bend points index off; the real one
+        unless a reform grows it differently."""
+        return self.fq
+
+    def n_drop_override(self, ent_year: int, elig_year: int) -> int | None:
+        """A reform's fixed number of dropout years, or None to keep the
+        computed one."""
+        return None
+
+    def adjust_cpiinc(self) -> None:
+        """Lets a reform change the benefit-increase series in place."""
+
+    def adjust_bases(self) -> tuple[int, int]:
+        """Lets a reform set ad hoc wage bases. Returns the first year of
+        automatic projection for the OASDI and old-law series."""
+        return self.istart + 1, self.istart + 1
+
     # ---- accessors mirroring PiaParams ----
 
     def get_fq(self, year: int) -> float:
@@ -100,7 +130,7 @@ class Params:
         return self.cpiinc[year]
 
     def bend_points_pia(self, elig_year: int) -> tuple[float, float]:
-        return projection.bend_points_pia(elig_year, self.fq)
+        return projection.bend_points_pia(elig_year, self.fq_bppia)
 
     def bend_points_mfb(self, elig_year: int) -> tuple[float, float, float]:
         return projection.bend_points_mfb(elig_year, self.fq)
