@@ -206,6 +206,8 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
     m.mfb_ent = base.apply_colas(
         ctx, m.mfb_elig, year5, ctx.worker.benefit_date
     )
+    if base.wants_real_wage_gain(ctx, year5):
+        base.real_wage_gain_adj(ctx, m, year5, adjust_mfb=not non_freeze)
     return m
 
 
@@ -238,4 +240,6 @@ def calculate_reindexed_widow(
     m.pia_ent = base.apply_colas(
         ctx, m.pia_elig, elig_year, ctx.worker.benefit_date
     )
+    if base.wants_real_wage_gain(ctx, elig_year):
+        base.real_wage_gain_adj(ctx, m, elig_year, adjust_mfb=False)
     return m

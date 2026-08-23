@@ -94,6 +94,8 @@ def calculate(ctx: CalcContext) -> MethodState:
     portion_pia_elig = base.set_portion_pia_elig(m.pia_elig[yr4], bend_mfb)
     m.mfb_elig[yr4] = base.mfb_cal(portion_pia_elig, PERC_MFB, yr4)
     m.mfb_ent = base.apply_colas(ctx, m.mfb_elig, yr5, w.benefit_date)
+    if base.wants_real_wage_gain(ctx, yr5):
+        base.real_wage_gain_adj(ctx, m, yr5, adjust_mfb=False)
     return m
 
 

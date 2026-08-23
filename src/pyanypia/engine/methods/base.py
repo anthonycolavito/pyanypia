@@ -99,6 +99,28 @@ class MethodState:
     method_os: int = -1
 
 
+def real_wage_gain_adj(
+    ctx: CalcContext, m: MethodState, elig_year: int, *, adjust_mfb: bool
+) -> None:
+    """WageIndGeneral::realWageGainAdj.
+
+    The old Statement assumptions project no wage growth, so the amounts
+    are scaled up by a percent for every year of eligibility past the
+    current one instead. Only the wage-indexed method's MFB is adjusted;
+    the C++ tests its own method for that.
+    """
+    istart = ctx.params.istart
+    factor = 1.0 + 0.01 * (elig_year - istart)
+    m.pia_ent = round_benefit(m.pia_ent * factor, istart - 1)
+    if adjust_mfb:
+        m.mfb_ent = round_benefit(m.mfb_ent * factor, istart - 1)
+
+
+def wants_real_wage_gain(ctx: CalcContext, elig_year: int) -> bool:
+    """Whether realWageGainAdj applies (WageInd::calculate)."""
+    return elig_year > ctx.params.istart and ctx.params.is_pebs_assumptions
+
+
 def set_year_cpi(ctx: CalcContext, m: MethodState) -> None:
     """PiaMethod::setYearCpi."""
     assert ctx.worker.benefit_date is not None

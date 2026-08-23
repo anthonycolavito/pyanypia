@@ -193,20 +193,21 @@ reform's name — see [Limitations](#limitations) for why the list is short.
 
 ## Fidelity
 
-The differential suites, all penny-exact against the compiled oracle -- 9,176 cases in total:
+The differential suites, all penny-exact against the compiled oracle -- 9,302 cases in total:
 
 | Suite | Cases | What it covers |
 |---|---:|---|
 | `retire_v1` | 462 | Modern retirement across cohorts, earnings patterns, claim ages |
 | `surv_v1` | 450 | Survivors: aged and disabled widow(er)s, young families, children |
 | `pebs_v1` | 420 | Social Security Statement estimates |
-| `hist_v1` | 414 | Old-start, PIA-table and transitional-guarantee cohorts, 1900–1928 |
+| `hist_v1` | 434 | Old-start, PIA-table and transitional-guarantee cohorts, 1900–1928 |
 | `dib_v1` | 176 | Disability, freeze and non-freeze computations |
 | `total_v1` | 96 | Totalization, pro-rated PIAs |
 | `fam_v1` | 72 | Retirement with spouses and children |
 | `special_v1` | 60 | Disability guarantee, child-care dropout years |
 | `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
-| `freeze_v1` | 16 | Earnings inside a disability freeze window; two periods of disability |
+| `freeze_v1` | 18 | Earnings inside a disability freeze window; two periods of disability |
+| `assum_v1` | 48 | The assumption codes that are not Trustees alternatives |
 | `reform_v1` | 3,440 | 172 cases under present law and nineteen reform variants |
 | alternatives I and III | 3,544 | the eight sweeps above other than the Statement, reform and freeze suites, re-costed under the low-cost and high-cost projections |
 

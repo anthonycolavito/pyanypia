@@ -37,7 +37,7 @@ below is new to anyone installing this.
 
 ### Fidelity
 
-- 9,176 differential cases, each compared field by field against the
+- 9,302 differential cases, each compared field by field against the
   compiled C++ oracle and matching to the cent: insured status,
   eligibility year, every method's AIME/PIA/MFB, the winning method, the
   family maximum, the reduction or credit months, every family member's

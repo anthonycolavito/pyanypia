@@ -21,6 +21,10 @@ class Assumptions:
     """Projected benefit-increase and AWI-increase paths."""
 
     alt: int  # 1, 2, 3, or 0 for user-specified
+    #: The average-wage assumption code, which can differ from `alt`;
+    #: 6 selects the old Statement assumptions and carries the real
+    #: wage-gain adjustment with it (AssumptionType::PEBS_ASSUM).
+    ialtaw: int = 0
     biproj: dict[int, float] = field(default_factory=dict)  # year -> percent
     awincproj: dict[int, float] = field(default_factory=dict)
     catchup: dict[tuple[int, int], float] = field(default_factory=dict)
@@ -32,6 +36,7 @@ class Assumptions:
             raise ValueError(f"alternative must be 1, 2, or 3; got {alt}")
         return cls(
             alt=alt,
+            ialtaw=alt,
             biproj=cls._bi_path(alt),
             awincproj=cls._aw_path(alt),
         )
@@ -47,6 +52,7 @@ class Assumptions:
         """
         return cls(
             alt=ialtbi,
+            ialtaw=ialtaw,
             biproj=cls._bi_path(ialtbi),
             awincproj=cls._aw_path(ialtaw),
         )

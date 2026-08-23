@@ -30,6 +30,9 @@ def _series(values: tuple[float, ...], first: int) -> dict[int, float]:
     return {first + i: v for i, v in enumerate(values)}
 
 
+# AssumptionType::PEBS_ASSUM
+PEBS_ASSUM = 6
+
 # PercPia::PERC — the 90/32/15 benefit formula percentages
 PERC_PIA = (0.90, 0.32, 0.15)
 
@@ -110,6 +113,12 @@ class Params:
 
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
+
+    @property
+    def is_pebs_assumptions(self) -> bool:
+        """PiaCalAny::calculate2 — the old Statement assumptions, which
+        bring the real wage-gain adjustment with them."""
+        return self.assumptions.ialtaw == PEBS_ASSUM
 
     def perc_pia(self, elig_year: int) -> tuple[float, ...]:
         """PiaParams::percPiaCal — the benefit formula percentages for an

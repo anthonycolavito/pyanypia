@@ -952,6 +952,41 @@ def freeze_v1() -> list[CaseSpec]:
     return cases
 
 
+def assum_v1() -> list[CaseSpec]:
+    """Cases under the assumption codes that are not Trustees
+    alternatives.
+
+    Code 6 is the old Statement assumptions, which project no wage growth
+    and instead scale the amounts up a percent for every year of
+    eligibility past the current one (WageIndGeneral::realWageGainAdj).
+    Code 5 is flat and code 4 is the old alternative IIA; both are
+    controls, since neither carries that adjustment. Every sweep before
+    this one used 1, 2 or 3, so the adjustment was never exercised.
+    """
+    cases: list[CaseSpec] = []
+    n = 80000
+    for ialt in (4, 5, 6):
+        for by in [1965, 1975, 1985, 1995]:
+            dob = (by, 3, 15)
+            nra_y, nra_m = NRA.get(by + 62, (67, 0))
+            for pat in ["steady", "max"]:
+                for label, ent in (
+                    ("nra", attain_month(dob, nra_y, nra_m)),
+                    ("62", add_months(attain_month(dob, 62), 1)),
+                ):
+                    earn = earnings_pattern(pat, by, ent[0] - 1)
+                    if not earn:
+                        continue
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"a1-{ialt}-{by}-{pat}-{label}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                        ent=ent, bendate=ent, earnings=earn,
+                        ialtbi=ialt, ialtaw=ialt,
+                    ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
@@ -964,6 +999,7 @@ SWEEPS = {
     "pebs_v1": pebs_v1,
     "reform_v1": reform_v1,
     "freeze_v1": freeze_v1,
+    "assum_v1": assum_v1,
 }
 
 
