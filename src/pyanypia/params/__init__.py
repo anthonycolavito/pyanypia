@@ -78,12 +78,19 @@ class Params:
         )
 
         # --- special minimum tables (dependent on cpiinc) ---
+        self._spec_min_split = self.spec_min_split_year()
         (
             self._specmin_pia,
             self._specmin_mfb,
             self._specmin_pia_2001,
             self._specmin_mfb_2001,
-        ) = projection.project_special_min(self.cpiinc, self.maxyear)
+            self._specmin_pia_extra,
+            self._specmin_mfb_extra,
+        ) = projection.project_special_min(
+            self.cpiinc, self.maxyear,
+            amount_at=self.spec_min_amount,
+            split_year=self._spec_min_split,
+        )
 
     # ---- reform hooks (no-ops under present law) ----
 
@@ -99,6 +106,16 @@ class Params:
 
     def adjust_cpiinc(self) -> None:
         """Lets a reform change the benefit-increase series in place."""
+
+    def spec_min_amount(self, year: int) -> float:
+        """PiaParams::specMinAmountCalPL — the special minimum's amount
+        per year of coverage, $11.50 since 1979."""
+        return 11.50
+
+    def spec_min_split_year(self) -> int | None:
+        """The first year of a reform's new special-minimum amount, from
+        which the table is rebuilt rather than carried forward."""
+        return None
 
     def project_bases(self) -> None:
         """WageBaseLC::project — projects the three wage-base series.
@@ -269,16 +286,17 @@ class Params:
 
     def get_spec_min_pia(self, at: MonthYear, yoc: int) -> float:
         return self._spec_min_get(self._specmin_pia, self._specmin_pia_2001,
-                                  at, yoc)
+                                  self._specmin_pia_extra, at, yoc)
 
     def get_spec_min_mfb(self, at: MonthYear, yoc: int) -> float:
         return self._spec_min_get(self._specmin_mfb, self._specmin_mfb_2001,
-                                  at, yoc)
+                                  self._specmin_mfb_extra, at, yoc)
 
     def _spec_min_get(
         self,
         tables: list[dict[int, float]],
         aug2001: list[float],
+        changed: list[float],
         at: MonthYear,
         yoc: int,
     ) -> float:
@@ -286,6 +304,10 @@ class Params:
         if at.month < self.month_beninc(year):
             if year == 2001 and at.month >= 8:
                 return aug2001[yoc - 1] if yoc > 0 else 0.0
+            if year == self._spec_min_split:
+                # before the benefit increase in the year a reform's new
+                # amount starts, that amount applies unindexed
+                return changed[yoc - 1] if yoc > 0 else 0.0
             year -= 1
         return tables[yoc - 1][year] if yoc > 0 else 0.0
 

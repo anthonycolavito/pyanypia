@@ -101,6 +101,20 @@ class DiDropoutFive(Change):
 
 
 @dataclass(frozen=True)
+class SpecialMinimum(Change):
+    """Replace the special minimum's amount per year of coverage
+    (LawChangeNEWSPECMIN).
+
+    The change also offers a different maximum number of usable years,
+    which is not modelled: `SpecMin` caps the years it uses at
+    `specMinMaxYearsPL()`, the present-law maximum, so a raised one only
+    ever sizes a table whose extra rows nothing reads.
+    """
+
+    amount: float = 0.0
+
+
+@dataclass(frozen=True)
 class WageBaseChange(Change):
     """Replace the OASDI contribution and benefit base for the years in
     the span; automatic projection resumes after them."""
@@ -134,6 +148,7 @@ class Reform:
     nra: NraChange | None = None
     cola: ColaChange | None = None
     wage_base: WageBaseChange | None = None
+    special_min: SpecialMinimum | None = None
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
@@ -274,6 +289,19 @@ class ReformedParams(Params):
             months_ardri, retire_age.AR_MONTHLY_SPOUSE_62_65
         )
 
+    def spec_min_amount(self, year: int) -> float:
+        """PiaParamsLC::specMinAmountCal — the new amount applies from its
+        first year on, keyed on the year alone rather than on
+        isEffective."""
+        change = self.reform.special_min
+        if change is not None and year >= change.start_year:
+            return change.amount
+        return super().spec_min_amount(year)
+
+    def spec_min_split_year(self) -> int | None:
+        change = self.reform.special_min
+        return None if change is None else change.start_year
+
     def n_drop_override(self, ent_year: int, elig_year: int) -> int | None:
         """PiaCalLC::nCal — a flat five dropout years."""
         change = self.reform.di_dropout_five
@@ -343,6 +371,7 @@ __all__ = [
     "NraChange",
     "Reform",
     "ReformedParams",
+    "SpecialMinimum",
     "WageBaseChange",
     "reformed_params",
 ]

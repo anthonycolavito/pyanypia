@@ -32,6 +32,7 @@ from pyanypia.law import (  # noqa: E402
     DiDropoutFive,
     NraChange,
     Reform,
+    SpecialMinimum,
     WageBaseChange,
 )
 
@@ -109,7 +110,20 @@ VARIANTS: list[ReformVariant] = [
         Reform(di_dropout_five=DiDropoutFive(2010, 2100)),
         "the same, entitlements from 2010 on",
     ),
-    # ---- contribution and benefit base (WAGEBASECHG) -----------------
+    # ---- special minimum (NEWSPECMIN) --------------------------------
+    ReformVariant(
+        "specmin_25",
+        [lcw.new_special_min(25.00, 2015, 2100)],
+        Reform(special_min=SpecialMinimum(2015, 2100, amount=25.00)),
+        "the special minimum at $25 a year of coverage from 2015",
+    ),
+    ReformVariant(
+        "specmin_5",
+        [lcw.new_special_min(5.00, 2020, 2100)],
+        Reform(special_min=SpecialMinimum(2020, 2100, amount=5.00)),
+        "and at $5 from 2020, which should make it stop winning",
+    ),
+
     ReformVariant(
         "base_doubled",
         [lcw.wage_base_change(_HIKE, _WB_FIRST, _WB_LAST,
@@ -152,7 +166,8 @@ BY_NAME = {v.name: v for v in VARIANTS}
 
 # A reform's changes must all be types pyanypia claims to support, or the
 # sweep is testing the oracle against a Reform that means something else.
-_SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG"}
+_SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG",
+              "NEWSPECMIN"}
 for _v in VARIANTS:
     _unsupported = {c.name for c in _v.changes} - _SUPPORTED
     if _unsupported:

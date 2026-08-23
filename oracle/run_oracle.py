@@ -105,8 +105,15 @@ def run_reform_sweep(name: str = "reform_v1") -> None:
     manifest = [json.loads(line) for line in open(casedir / "manifest.jsonl")]
 
     def key(row: dict) -> tuple:
+        """Everything the differential test compares. A variant that only
+        moves a method that never wins still has to be matched, so the
+        per-method values belong here and not just the payable amount."""
         return (row.get("high_pia"), row.get("high_mfb"),
-                row.get("rounded_benefit"), row.get("error"),
+                row.get("high_method"), row.get("rounded_benefit"),
+                row.get("support_pia"), row.get("pifc"), row.get("error"),
+                tuple(sorted((m["method"], m["applicable"], m["ame"],
+                              m["pia"], m["mfb"])
+                             for m in row.get("methods", []))),
                 tuple(sorted((s["bic"], s["rounded_benefit"])
                              for s in row.get("secondaries", []))))
 

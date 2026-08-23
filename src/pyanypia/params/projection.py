@@ -9,6 +9,7 @@ exactly; do not simplify the arithmetic.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from pyanypia.rounding import apply_cola as _ba_apply_cola
 from pyanypia.rounding import round_benefit
@@ -184,19 +185,44 @@ def yoc_amounts_special_min(
 
 
 def project_special_min(
-    cpiinc: dict[int, float], last_year: int
+    cpiinc: dict[int, float],
+    last_year: int,
+    *,
+    amount_at: Callable[[int], float] | None = None,
+    split_year: int | None = None,
 ) -> tuple[
-    list[dict[int, float]], list[dict[int, float]], list[float], list[float]
+    list[dict[int, float]], list[dict[int, float]],
+    list[float], list[float], list[float], list[float],
 ]:
-    """PiaParamsLC::projectSpecMin under present law (base year 1979,
-    empty catch-up): returns (pia tables, mfb tables, Aug-2001 pias,
-    Aug-2001 mfbs), each indexed by years-of-coverage-minus-11 (0..19).
+    """PiaParamsLC::projectCpiinc and projectSpecMin: returns (pia tables,
+    mfb tables, Aug-2001 pias, Aug-2001 mfbs, changed-year pias,
+    changed-year mfbs), each indexed by years-of-coverage-minus-11 (0..19).
+
+    A reform setting a new amount per year of coverage restarts the table
+    at its first year instead of carrying the old one forward, so the
+    projection runs in two ranges. The amounts for the first year of the
+    change are kept aside: they are what applies in the months of that
+    year before its benefit increase.
     """
-    amount_per_year = 11.50  # specMinAmountCal(Jan 1979)
-    pia_tables: list[dict[int, float]] = []
-    mfb_tables: list[dict[int, float]] = []
+    amount_of = amount_at if amount_at is not None else (lambda _year: 11.50)
+    if split_year is not None and split_year <= 2002:
+        raise ValueError(
+            f"special-minimum change from {split_year}: the calculator "
+            f"recalculates 1999-2001 from table entries the first range "
+            f"would not have written, so a change before 2003 has no "
+            f"well-defined answer to match"
+        )
+
+    pia_tables: list[dict[int, float]] = [
+        {} for _ in range(SPEC_MIN_MAX_YEARS)
+    ]
+    mfb_tables: list[dict[int, float]] = [
+        {} for _ in range(SPEC_MIN_MAX_YEARS)
+    ]
     pia_2001: list[float] = []
     mfb_2001: list[float] = []
+    pia_extra: list[float] = [0.0] * SPEC_MIN_MAX_YEARS
+    mfb_extra: list[float] = [0.0] * SPEC_MIN_MAX_YEARS
 
     def apply_cola(amt: float, year: int) -> float:
         return _ba_apply_cola(amt, cpiinc[year], year)
@@ -206,37 +232,50 @@ def project_special_min(
         mfbt = round_benefit(1.5 * pia, year)
         return max(rv, mfbt)
 
-    for num_years in range(SPEC_MIN_MAX_YEARS):
-        pia = (num_years + 1) * amount_per_year
-        mfb = round_benefit(1.5 * pia, YEAR79)
-        da_pia: dict[int, float] = {1978: pia}
-        da_mfb: dict[int, float] = {1978: mfb}
-        for year in range(YEAR79, min(2000, last_year) + 1):
-            pia = apply_cola(pia, year)
-            da_pia[year] = pia
-            mfb = apply_cola_mfb(mfb, year, pia)
-            da_mfb[year] = mfb
-        # recalculate December 1999 with the extra 0.1 percent
-        pia1999 = _ba_apply_cola(da_pia[1998], cpiinc[1999] + 0.1, 1999)
-        mfb1999 = max(
-            _ba_apply_cola(da_mfb[1998], cpiinc[1999] + 0.1, 1999),
-            round_benefit(1.5 * pia1999, 1999),
-        )
-        # December 2000 values, effective August 2001
-        pia1999 = apply_cola(pia1999, 2000)
-        pia_2001.append(pia1999)
-        mfb1999 = apply_cola_mfb(mfb1999, 2000, pia)
-        mfb_2001.append(mfb1999)
-        # December 2001
-        pia = apply_cola(pia1999, 2001)
-        da_pia[2001] = pia
-        mfb = apply_cola_mfb(mfb1999, 2001, pia)
-        da_mfb[2001] = mfb
-        for year in range(2002, last_year + 1):
-            pia = apply_cola(pia, year)
-            da_pia[year] = pia
-            mfb = apply_cola_mfb(mfb, year, pia)
-            da_mfb[year] = mfb
-        pia_tables.append(da_pia)
-        mfb_tables.append(da_mfb)
-    return pia_tables, mfb_tables, pia_2001, mfb_2001
+    def project_range(base_year: int, last: int) -> None:
+        amount_per_year = amount_of(base_year)  # specMinAmountCal(Jan base)
+        for num_years in range(SPEC_MIN_MAX_YEARS):
+            pia = (num_years + 1) * amount_per_year
+            mfb = round_benefit(1.5 * pia, base_year)
+            da_pia = pia_tables[num_years]
+            da_mfb = mfb_tables[num_years]
+            if base_year == YEAR79:
+                da_pia[1978] = pia
+                da_mfb[1978] = mfb
+                for year in range(YEAR79, min(2000, last) + 1):
+                    pia = apply_cola(pia, year)
+                    da_pia[year] = pia
+                    mfb = apply_cola_mfb(mfb, year, pia)
+                    da_mfb[year] = mfb
+                # recalculate December 1999 with the extra 0.1 percent
+                pia1999 = _ba_apply_cola(da_pia[1998], cpiinc[1999] + 0.1, 1999)
+                mfb1999 = max(
+                    _ba_apply_cola(da_mfb[1998], cpiinc[1999] + 0.1, 1999),
+                    round_benefit(1.5 * pia1999, 1999),
+                )
+                # December 2000 values, effective August 2001
+                pia1999 = apply_cola(pia1999, 2000)
+                pia_2001.append(pia1999)
+                mfb1999 = apply_cola_mfb(mfb1999, 2000, pia)
+                mfb_2001.append(mfb1999)
+                # December 2001
+                pia = apply_cola(pia1999, 2001)
+                da_pia[2001] = pia
+                mfb = apply_cola_mfb(mfb1999, 2001, pia)
+                da_mfb[2001] = mfb
+            else:
+                # the changed amount, before that year's benefit increase
+                pia_extra[num_years] = pia
+                mfb_extra[num_years] = mfb
+            for year in range(max(2002, base_year), last + 1):
+                pia = apply_cola(pia, year)
+                da_pia[year] = pia
+                mfb = apply_cola_mfb(mfb, year, pia)
+                da_mfb[year] = mfb
+
+    if split_year is None:
+        project_range(YEAR79, last_year)
+    else:
+        project_range(YEAR79, split_year - 1)
+        project_range(split_year, last_year)
+    return pia_tables, mfb_tables, pia_2001, mfb_2001, pia_extra, mfb_extra

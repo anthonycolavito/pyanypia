@@ -113,6 +113,14 @@ def di_dropout_five(start_year: int, end_year: int,
     return Change("DIDROP5", 1, start_year, end_year, phase_type)
 
 
+def new_special_min(amount: float, start_year: int, end_year: int,
+                    phase_type: int = 0) -> Change:
+    """A new special-minimum amount per year of coverage. Indicator 1 is
+    the amount alone, which LawChangeNEWSPECMIN reads from its own line."""
+    return Change("NEWSPECMIN", 1, start_year, end_year, phase_type,
+                  lines=[f"{amount:.2f}"])
+
+
 def wage_base_change(bases: dict[int, float], start_year: int,
                      end_year: int, phase_type: int = 1) -> Change:
     """Ad hoc OASDI wage bases for start_year..end_year."""
