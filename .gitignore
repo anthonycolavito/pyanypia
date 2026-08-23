@@ -11,3 +11,5 @@ dist/
 oracle/bin/
 oracle/work/
 .DS_Store
+.coverage
+htmlcov/
