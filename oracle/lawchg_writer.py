@@ -175,17 +175,23 @@ def wife_factor(start_year: int, end_year: int,
     return Change("WIFEFACTOR", 1, start_year, end_year, phase_type)
 
 
-def new_formula(percentages: dict[int, list[float]], num_bp: int,
-                bend_points: dict[int, list[float]], start_year: int,
+def new_formula(bend_points: dict[int, list[float]],
+                percentages: dict[int, list[float]], start_year: int,
                 end_year: int, phase_type: int = 0) -> Change:
-    """A replacement PIA formula: `num_bp` bend points, then one line per
-    eligibility year giving that year's bend points and percentages."""
+    """A replacement PIA formula.
+
+    Per LawChangeNEWFORMULA::read: a line giving the number of bend
+    points, then one line per eligibility year in the span carrying that
+    year's percentages, one more than the bend points, followed by the
+    bend points themselves. The year is not on the line -- the lines are
+    matched to years by their order.
+    """
+    num_bp = len(bend_points[start_year])
     lines = [str(num_bp)]
     for year in range(start_year, end_year + 1):
-        values = [
-            *(f"{b:.2f}" for b in bend_points[year]),
+        lines.append(" ".join([
             *(f"{p}" for p in percentages[year]),
-        ]
-        lines.append(" ".join([str(year), *values]))
+            *(f"{b:.2f}" for b in bend_points[year]),
+        ]))
     return Change("NEWFORMULA", 1, start_year, end_year, phase_type,
                   lines=lines)

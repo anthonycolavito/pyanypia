@@ -63,9 +63,8 @@ CANDIDATES: dict[str, lcw.Change] = {
         ],
     ),
     "NEWFORMULA": lcw.new_formula(
-        percentages={y: [90.0, 32.0, 15.0] for y in range(2020, 2031)},
-        num_bp=2,
         bend_points={y: [1000.0, 6000.0] for y in range(2020, 2031)},
+        percentages={y: [0.90, 0.32, 0.15] for y in range(2020, 2031)},
         start_year=2020, end_year=2030,
     ),
 }

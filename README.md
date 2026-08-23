@@ -149,7 +149,7 @@ The PIA is untouched and the benefit is not: this worker claims at 67 and
 is fifteen months of delayed retirement credit once the full retirement
 age is 65.
 
-Four changes are supported, each mapped to the LawChange class it ports
+Nine changes are supported, each mapped to the LawChange class it ports
 and each validated against the oracle over the `reform_v1` sweep:
 
 | `Reform` field | LawChange | What it does |
@@ -158,6 +158,11 @@ and each validated against the oracle over the `reform_v1` sweep:
 | `cola` | `COLACHANGE` | Benefit increases shifted by a percentage point over a span |
 | `wage_base` | `WAGEBASECHG` | Ad hoc contribution and benefit bases, after which projection resumes off the last of them |
 | `di_dropout_five` | `DIDROP5` | A flat five dropout years in place of the one-for-five rule |
+| `new_formula` | `NEWFORMULA` | A replacement benefit formula: one to four bend points with their own percentages, indexed off wages past the span |
+| `declining_perc` | `DECLINEPERC` | The formula percentages falling year by year, compounding, over one or more intervals |
+| `special_min` | `NEWSPECMIN` | A new special-minimum amount per year of coverage, restarting the indexed table where it begins |
+| `comp_point` | `AGE65COMP` | The computation point moving from age 62 towards 65, phased in |
+| `childcare_dropout` | `CHILDCAREDROPOUT` | Child-care dropout years for everyone, more of them, and counting years under a share of the average wage rather than only empty ones |
 
 Anything else raises rather than returning a present-law answer under a
 reform's name — see [Limitations](#limitations) for why the list is short.
@@ -177,7 +182,7 @@ The differential suites, all penny-exact against the compiled oracle:
 | `fam_v1` | 72 | Retirement with spouses and children |
 | `special_v1` | 60 | Disability guarantee, child-care dropout years |
 | `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
-| `reform_v1` | 1,600 | 160 cases under present law and nine reform variants |
+| `reform_v1` | 3,440 | 172 cases under present law and nineteen reform variants |
 
 Each case is compared field by field: insured status, eligibility year, the
 AIME/PIA/MFB of every applicable method, the winning method, the family
@@ -197,10 +202,15 @@ pytest
 ## Limitations
 
 - **Most policy reforms are out of scope.** Of the calculator's forty
-  LawChange types, batch `anypiab` visibly honours only a handful; the
-  four listed under [Reforms](#reforms) are ported and validated, and
+  LawChange types, batch `anypiab` visibly honours only some; the nine
+  listed under [Reforms](#reforms) are ported and validated, and
   `Reform` rejects anything else rather than quietly returning present-law
-  answers under a reform's name. Two cases are worth naming. A reformed
+  answers under a reform's name. Which ones matter was measured rather
+  than assumed — `oracle/tools/scope_lawchg.py` switches each type on over
+  220 cases and counts how many answers move. `ALLEARN` is consulted
+  nowhere outside its own class; `TAXBENCHG` and `PSAACCT` reach only
+  output anypiab does not print; `CHILDCARECREDIT` is consulted but moved
+  no case tried. Two more are worth naming. A reformed
   aged-spouse factor (`WIFEFACTOR`) never reaches the answer, because
   `PiaCal` asks for `factorAgedSpouseCalPL()`, the present-law factor. And
   the bend-point reforms (`BPFRACWAGE`, `BPMINCONST`) cannot be computed

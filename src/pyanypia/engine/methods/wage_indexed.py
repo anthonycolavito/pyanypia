@@ -56,13 +56,17 @@ def index_earnings(
 
 
 def set_portion_aime(
-    ame: float, bend_pia: tuple[float, float]
-) -> tuple[float, float, float]:
-    return (
-        min(ame, bend_pia[0]),
-        max(0.0, min(ame - bend_pia[0], bend_pia[1] - bend_pia[0])),
-        max(ame - bend_pia[1], 0.0),
-    )
+    ame: float, bend_pia: tuple[float, ...]
+) -> tuple[float, ...]:
+    """WageIndGeneral::setPortionAime, which the C++ writes out once per
+    number of bend points; the shape is the same for all of them."""
+    parts = [min(ame, bend_pia[0])]
+    for i in range(len(bend_pia) - 1):
+        parts.append(
+            max(0.0, min(ame - bend_pia[i], bend_pia[i + 1] - bend_pia[i]))
+        )
+    parts.append(max(ame - bend_pia[-1], 0.0))
+    return tuple(parts)
 
 
 def aimepia_cal(
@@ -77,21 +81,28 @@ def aimepia_cal(
 def deconvert_ame(
     ctx: CalcContext,
     piasub: float,
-    bend_pia: tuple[float, float],
+    bend_pia: tuple[float, ...],
     perc_pia: tuple[float, ...],
 ) -> float:
     """WageIndGeneral::deconvertAme — the AIME that would produce `piasub`
-    under the present-law two-bend-point formula. A totalization case
-    reports this rather than the AIME of the artificial record, since the
-    PIA it must correspond to has been pro-rated."""
-    temp1 = (perc_pia[0] - perc_pia[1]) * bend_pia[0]
-    temp2 = (perc_pia[1] - perc_pia[2]) * bend_pia[1]
-    if piasub < perc_pia[0] * bend_pia[0]:
-        rv = piasub / perc_pia[0]
-    elif piasub < temp1 + perc_pia[1] * bend_pia[1]:
-        rv = (piasub - temp1) / perc_pia[1]
-    else:
-        rv = (piasub - temp1 - temp2) / perc_pia[2]
+    under the formula. A totalization case reports this rather than the
+    AIME of the artificial record, since the PIA it must correspond to
+    has been pro-rated.
+
+    The C++ spells out a case per number of bend points; each is the same
+    walk down the brackets, subtracting the steps already crossed.
+    """
+    steps = [
+        (perc_pia[i] - perc_pia[i + 1]) * bend_pia[i]
+        for i in range(len(bend_pia))
+    ]
+    rv = (piasub - sum(steps)) / perc_pia[len(bend_pia)]
+    crossed = 0.0
+    for i in range(len(bend_pia)):
+        if piasub < crossed + perc_pia[i] * bend_pia[i]:
+            rv = (piasub - crossed) / perc_pia[i]
+            break
+        crossed += steps[i]
     return math.ceil(rv) if ctx.elig_year > 1982 else math.floor(rv)
 
 

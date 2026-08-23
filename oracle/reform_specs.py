@@ -33,6 +33,7 @@ from pyanypia.law import (  # noqa: E402
     ColaChange,
     DecliningPercentages,
     DiDropoutFive,
+    NewFormula,
     NraChange,
     Reform,
     SpecialMinimum,
@@ -52,6 +53,15 @@ _BASE = {
 _WB_FIRST, _WB_LAST = 2015, 2030
 _HIKE = {y: round(2.0 * _BASE[y], 2) for y in range(_WB_FIRST, _WB_LAST + 1)}
 _FREEZE = {y: _BASE[_WB_FIRST] for y in range(_WB_FIRST, _WB_LAST + 1)}
+
+
+# Replacement formulas, held flat across their spans. The bend points are
+# in the range present law reaches in these years, so the cases land in
+# every bracket rather than piling into the top one.
+_FLAT_BP = {y: (1500.0,) for y in range(2020, 2036)}
+_FLAT_PERC = {y: (0.85, 0.25) for y in range(2020, 2036)}
+_STEEP_BP = {y: (1000.0, 5000.0, 9000.0) for y in range(2015, 2031)}
+_STEEP_PERC = {y: (0.95, 0.40, 0.20, 0.10) for y in range(2015, 2031)}
 
 
 @dataclass(frozen=True)
@@ -112,6 +122,21 @@ VARIANTS: list[ReformVariant] = [
         [lcw.di_dropout_five(2010, 2100)],
         Reform(di_dropout_five=DiDropoutFive(2010, 2100)),
         "the same, entitlements from 2010 on",
+    ),
+    # ---- a replacement formula (NEWFORMULA) --------------------------
+    ReformVariant(
+        "formula_one_bend",
+        [lcw.new_formula(_FLAT_BP, _FLAT_PERC, 2020, 2035)],
+        Reform(new_formula=NewFormula(2020, 2035, bend_points=_FLAT_BP,
+                                      percentages=_FLAT_PERC)),
+        "a single bend point at $1,500, 85 and 25 percent",
+    ),
+    ReformVariant(
+        "formula_three_bends",
+        [lcw.new_formula(_STEEP_BP, _STEEP_PERC, 2015, 2030)],
+        Reform(new_formula=NewFormula(2015, 2030, bend_points=_STEEP_BP,
+                                      percentages=_STEEP_PERC)),
+        "three bend points and a steeper taper above them",
     ),
     # ---- declining formula percentages (DECLINEPERC) -----------------
     ReformVariant(
@@ -216,7 +241,8 @@ BY_NAME = {v.name: v for v in VARIANTS}
 # sweep is testing the oracle against a Reform that means something else.
 _SUPPORTED = {"NRACHANGE", "COLACHANGE", "DIDROP5", "WAGEBASECHG",
               "NEWSPECMIN", "AGE65COMP",
-              "CHILDCAREDROPOUT", "DECLINEPERC"}
+              "CHILDCAREDROPOUT", "DECLINEPERC",
+              "NEWFORMULA"}
 for _v in VARIANTS:
     _unsupported = {c.name for c in _v.changes} - _SUPPORTED
     if _unsupported:

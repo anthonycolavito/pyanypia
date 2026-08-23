@@ -16,6 +16,7 @@ ignored produces present-law answers under a reform's name.
 from __future__ import annotations
 
 import dataclasses
+import math
 from dataclasses import dataclass, field
 
 from pyanypia.dates import Age
@@ -98,6 +99,44 @@ class BendPointMinusConstant(Change):
 class DiDropoutFive(Change):
     """Give every computation five dropout years rather than the
     one-for-five disability rule (LawChangeDIDROP5)."""
+
+
+@dataclass(frozen=True)
+class NewFormula(Change):
+    """A replacement benefit formula (LawChangeNEWFORMULA).
+
+    `bend_points` and `percentages` give, for every eligibility year in
+    the span, that year's bend points and the one-more percentages that
+    go with them; one to four bend points are allowed. Past the span the
+    bend points are indexed off wages from the last year given, and the
+    percentages stay as they were.
+    """
+
+    bend_points: dict[int, tuple[float, ...]] = field(default_factory=dict)
+    percentages: dict[int, tuple[float, ...]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        years = range(self.start_year, self.end_year + 1)
+        missing = [
+            y for y in years
+            if y not in self.bend_points or y not in self.percentages
+        ]
+        if missing:
+            raise ValueError(f"new formula missing years {missing}")
+        counts = {len(self.bend_points[y]) for y in years}
+        if len(counts) != 1:
+            raise ValueError(
+                f"the number of bend points must not vary: {sorted(counts)}"
+            )
+        num_bp = counts.pop()
+        if not 1 <= num_bp <= 4:
+            raise ValueError(f"1 to 4 bend points, not {num_bp}")
+        wrong = [y for y in years if len(self.percentages[y]) != num_bp + 1]
+        if wrong:
+            raise ValueError(
+                f"{num_bp} bend points need {num_bp + 1} percentages; "
+                f"years {wrong} have another number"
+            )
 
 
 @dataclass(frozen=True)
@@ -204,6 +243,7 @@ class Reform:
     comp_point: Age65ComputationPoint | None = None
     childcare_dropout: ChildCareDropout | None = None
     declining_perc: DecliningPercentages | None = None
+    new_formula: NewFormula | None = None
     bend_point_fraction: BendPointFraction | None = None
     bend_point_minus: BendPointMinusConstant | None = None
     di_dropout_five: DiDropoutFive | None = None
@@ -213,6 +253,12 @@ class Reform:
             name for name in ("bend_point_fraction", "bend_point_minus")
             if getattr(self, name) is not None
         ]
+        if self.new_formula is not None and self.declining_perc is not None:
+            raise ValueError(
+                "new_formula and declining_perc both set the benefit "
+                "formula percentages; the calculator would let the new "
+                "formula win and ignore the other, so pick one"
+            )
         if unsupported:
             raise ValueError(
                 f"{', '.join(unsupported)}: bend-point reforms are not "
@@ -239,6 +285,35 @@ class ReformedParams(Params):
         super().__init__(assumptions)
         if reform.declining_perc is not None:
             self._declining_perc = self._build_declining_perc()
+        self._formula_bp: dict[int, tuple[float, ...]] = {}
+        self._formula_perc: dict[int, tuple[float, ...]] = {}
+        if reform.new_formula is not None:
+            self._formula_bp, self._formula_perc = self._build_new_formula()
+
+    def _build_new_formula(
+        self,
+    ) -> tuple[dict[int, tuple[float, ...]], dict[int, tuple[float, ...]]]:
+        """PiaParamsLC::projectFq and projectPerc for a new formula.
+
+        The years in the span take the formula as given. Past it,
+        BpPiaOut::setIndexedData indexes each bend point off the last
+        year's, by the wage ratio two years back, and the percentages
+        simply repeat.
+        """
+        change = self.reform.new_formula
+        assert change is not None
+        last = min(self.maxyear, change.end_year)
+        years = range(change.start_year, last + 1)
+        bend = {y: tuple(change.bend_points[y]) for y in years}
+        perc = {y: tuple(change.percentages[y]) for y in years}
+        anchor = bend[last]
+        for year in range(last + 1, self.maxyear + 1):
+            factor = self.fq[year - 2] / self.fq[last - 2]
+            bend[year] = tuple(
+                math.floor(b * factor + 0.5) for b in anchor
+            )
+            perc[year] = perc[last]
+        return bend, perc
 
     def _build_declining_perc(self) -> dict[int, tuple[float, ...]]:
         """LawChangeDECLINEPERC::percPiaCal and PiaParamsLC::projectPerc.
@@ -269,11 +344,19 @@ class ReformedParams(Params):
 
     def perc_pia(self, elig_year: int) -> tuple[float, ...]:
         """PiaParams::percPiaCal off the changed percentages."""
+        if elig_year in self._formula_perc:
+            return self._formula_perc[elig_year]
         if self._declining_perc is None:
             return super().perc_pia(elig_year)
         return self._declining_perc.get(
             elig_year, super().perc_pia(elig_year)
         )
+
+    def bend_points_pia(self, elig_year: int) -> tuple[float, ...]:
+        """BpPiaOut — a new formula supplies its own bend points."""
+        if elig_year in self._formula_bp:
+            return self._formula_bp[elig_year]
+        return super().bend_points_pia(elig_year)
 
     # ---- construction-time hooks ----
 
@@ -510,6 +593,7 @@ __all__ = [
     "DecliningPercentages",
     "DiDropoutFive",
     "Law",
+    "NewFormula",
     "NraChange",
     "Reform",
     "ReformedParams",

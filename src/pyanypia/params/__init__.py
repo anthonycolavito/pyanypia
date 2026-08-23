@@ -181,7 +181,9 @@ class Params:
             raise PiaError(62016, f"cpiinc year {year} out of range")
         return self.cpiinc[year]
 
-    def bend_points_pia(self, elig_year: int) -> tuple[float, float]:
+    def bend_points_pia(self, elig_year: int) -> tuple[float, ...]:
+        """The PIA formula bend points. Two under present law; a reform
+        replacing the formula can name up to four."""
         return projection.bend_points_pia(elig_year, self.fq_bppia)
 
     def bend_points_mfb(self, elig_year: int) -> tuple[float, float, float]:
