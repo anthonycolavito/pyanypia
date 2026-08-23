@@ -156,7 +156,6 @@ class _Record:
         self.childcare_years: list[int] = []
         self.assumptions = AssumptionSpec()
         self.istart2 = 0
-        self.has_railroad = False
         self.statement_month = 0
         self.statement_age_plan = 0
 
@@ -343,9 +342,13 @@ def _parse_line(rec: _Record, kind: int, body: str) -> None:
     elif 69 <= kind <= 83:
         rec.family.append(_family_member(body))
     elif 84 <= kind <= 94:
-        # railroad earnings; read so the file round-trips, but the engine
-        # refuses a case that carries them
-        rec.has_railroad = True
+        # Railroad earnings are credited toward Social Security, and the
+        # engine does not do that yet. Reading the file while dropping
+        # them would answer confidently and wrongly, so refuse instead.
+        raise PiaError(
+            PIA_IDS_READERR,
+            f"line type {kind}: railroad earnings are not supported",
+        )
     elif kind == 95:
         rec.qctottd = _int(body[0:3])
         rec.qctot51td = _int(body[3:6])

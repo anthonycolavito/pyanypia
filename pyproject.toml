@@ -43,9 +43,15 @@ testpaths = ["tests"]
 markers = [
     "oracle: differential tests requiring the compiled C++ oracle goldens",
     "oracle_smoke: fast oracle differential subset for CI",
+    "slow: tests that take more than a second or two",
 ]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 files = ["src/pyanypia"]
+
+# pandas is an optional extra, so its stubs are not a build requirement
+[[tool.mypy.overrides]]
+module = "pandas.*"
+ignore_missing_imports = true

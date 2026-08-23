@@ -6,6 +6,8 @@ on:
   pull_request:
 
 jobs:
+  # The differential suites compare the engine against goldens committed
+  # to the repo, so they need no compiler and run everywhere.
   test:
     strategy:
       fail-fast: false
@@ -18,30 +20,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e ".[dev]"
-      - run: ruff check src tests
+      - run: python -m pip install -e ".[dev,pandas]"
+      - run: ruff check src tests oracle
       - run: mypy
-      - run: pytest -m "not oracle and not oracle_smoke" -q
+      - run: pytest -m "not oracle_smoke" -q
 
-  oracle-smoke:
+  # Rebuilds the official calculator and checks two things the goldens
+  # alone cannot: that they still match a fresh build of the oracle, and
+  # that files this package writes are read identically by it.
+  oracle:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Check oracle present
-        id: oracle
-        run: |
-          if [ -f oracle/build/Makefile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
       - name: Install Boost headers
-        if: steps.oracle.outputs.present == 'true'
         run: sudo apt-get update && sudo apt-get install -y libboost-dev
-      - name: Build oracle
-        if: steps.oracle.outputs.present == 'true'
+      - name: Build the oracle
         run: make -C oracle/build all
-      - name: Run oracle smoke tests
-        if: steps.oracle.outputs.present == 'true'
+      - run: python -m pip install -e ".[dev,pandas]"
+      - name: Oracle round-trip tests
+        run: pytest -m oracle_smoke -q
+      - name: Goldens still match a fresh oracle run
         run: |
-          python -m pip install -e ".[dev]"
-          pytest -m oracle_smoke -q
+          python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
+            hist_v1 special_v1 total_v1 proj_v1 pebs_v1
+          git diff --exit-code -- oracle/goldens/
