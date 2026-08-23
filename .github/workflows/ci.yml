@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# read-only by default; nothing here writes to the repository
+permissions:
+  contents: read
+
+# a newer push supersedes an in-flight run of the same ref
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # The differential suites compare the engine against goldens committed
   # to the repo, so they need no compiler and run everywhere.
@@ -13,11 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.11", "3.12"]
+        python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e ".[dev,pandas]"
@@ -31,8 +40,8 @@ jobs:
   oracle:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install Boost headers
@@ -45,7 +54,7 @@ jobs:
       - name: Goldens still match a fresh oracle run
         run: |
           python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
-            hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1
+            hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1 freeze_v1
           for alt in 1 3; do
             python oracle/run_oracle.py \
               retire_v1@$alt dib_v1@$alt surv_v1@$alt fam_v1@$alt \

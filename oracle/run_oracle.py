@@ -50,15 +50,14 @@ def run_sweep(name: str, alt: int = 2) -> None:
         json.loads(line) for line in open(workdir / "output.jsonl")
     ]
     if len(results) != len(manifest):
-        print(
-            f"WARNING {name}: {len(manifest)} cases but "
-            f"{len(results)} oracle results"
+        raise RuntimeError(
+            f"{name}: {len(manifest)} cases but {len(results)} oracle "
+            f"results; a golden written from this would be silently "
+            f"truncated to the shorter of the two"
         )
     outpath = ORACLE / "goldens" / f"{name}{suffix}.jsonl"
     with open(outpath, "w") as f:
-        # not strict: a case the oracle rejected outright still needs its
-        # manifest row, and the length mismatch is reported above
-        for spec, res in zip(manifest, results, strict=False):
+        for spec, res in zip(manifest, results, strict=True):
             res["case_id"] = spec["case_id"]
             f.write(json.dumps(res) + "\n")
     n_err = sum(1 for r in results if "error" in r)

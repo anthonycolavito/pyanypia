@@ -4,32 +4,61 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyanypia"
-version = "0.1.0.dev0"
+version = "0.2.0"
 description = "Pure-Python port of SSA's AnyPIA Detailed Calculator (2026 TR), penny-exact vs the C++ oracle"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Anthony Colavito", email = "colavitoanthony@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = []
+keywords = [
+    "social-security", "ssa", "anypia", "benefits", "pia", "actuarial",
+    "retirement", "disability",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    # every version here is in the CI matrix; do not add one that is not
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Office/Business :: Financial",
     "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 
 [project.urls]
+Homepage = "https://github.com/anthonycolavito/pyanypia"
 Repository = "https://github.com/anthonycolavito/pyanypia"
+Issues = "https://github.com/anthonycolavito/pyanypia/issues"
+Changelog = "https://github.com/anthonycolavito/pyanypia/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 pandas = ["pandas>=2.0"]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+dev = ["pytest>=8", "ruff==0.16.*", "mypy==2.3.*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyanypia"]
+
+# An allowlist, because the default is everything not in .gitignore --
+# and hatchling does not read .git/info/exclude, so a file git considers
+# invisible still ships. The oracle tree stays in: it is what lets anyone
+# reproduce the penny-exact claim from the sdist alone.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/oracle",
+    "/docs/examples",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+exclude = ["/oracle/work", "/oracle/bin"]
 
 [tool.ruff]
 line-length = 100

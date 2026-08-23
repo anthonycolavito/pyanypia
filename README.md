@@ -76,7 +76,7 @@ Every snippet here is in `docs/examples/tour.py`, which the test suite runs.
 ### Family benefits
 
 ```python
-worker = pia.Worker(
+family_worker = pia.Worker(
     dob=date(1958, 6, 2),
     sex=pia.Sex.MALE,
     benefit_type=pia.BenefitType.OLD_AGE,
@@ -89,15 +89,24 @@ worker = pia.Worker(
                          entitlement=pia.MonthYear(2024, 7)),
     ],
 )
-r = pia.compute(worker)
+r = pia.compute(family_worker)
 for member in r.family:
     print(member.bic, f"${member.rounded_benefit:,.2f}")
 ```
 
 ### A Statement
 
+A Statement case is its own benefit type, and it takes no entitlement --
+the estimates are what the worker would get at each age:
+
 ```python
-s = pia.calculate_statement(worker, month_now=6, age_plan=65)
+statement_worker = pia.Worker(
+    dob=date(1975, 5, 20),
+    sex=pia.Sex.MALE,
+    benefit_type=pia.BenefitType.STATEMENT,
+    earnings={year: 60_000.0 for year in range(1998, 2026)},
+)
+s = pia.calculate_statement(statement_worker, month_now=6, age_plan=65)
 print(s.detail())
 ```
 
@@ -106,12 +115,19 @@ print(s.detail())
 ```python
 from pyanypia.batch import compute_many, compute_frame
 
-results = compute_many(workers)              # uses every CPU
-frame = compute_frame(df, earnings="earn")   # pandas extra
+if __name__ == "__main__":                       # required: see below
+    results = compute_many(workers)              # uses every CPU
+    frame = compute_frame(df, earnings="earn")   # pandas extra
 ```
 
 `compute_many` returns results in input order, and the answers do not depend
 on how the work was split across processes.
+
+The guard is not decoration. Work is parallelised with the "spawn" start
+method, so each child re-imports the calling module; without a
+`__main__` guard the child calls `compute_many` again, and so does its
+child. Pass `processes=1` to stay in this process and avoid the question
+entirely.
 
 ### `.pia` interoperability
 
@@ -119,10 +135,18 @@ The calculator's own case-file format reads and writes:
 
 ```python
 from pyanypia.io import read_pia_file, write_pia
+from pyanypia.params import params_for
 
 cases = read_pia_file("cases.pia")
-results = [pia.compute(c.worker) for c in cases]
-open("out.pia", "w").write(write_pia(cases))
+# a case file carries its own assumptions on line 40; honour them rather
+# than silently costing every case under the intermediate alternative
+results = [
+    pia.compute(c.worker,
+                params=params_for(c.assumptions.ialtbi, c.assumptions.ialtaw))
+    for c in cases
+]
+with open("out.pia", "w") as f:
+    f.write(write_pia(cases))
 ```
 
 Files written by pyanypia are read identically by the official calculator —
@@ -174,7 +198,7 @@ The differential suites, all penny-exact against the compiled oracle -- 9,176 ca
 | Suite | Cases | What it covers |
 |---|---:|---|
 | `retire_v1` | 462 | Modern retirement across cohorts, earnings patterns, claim ages |
-| `surv_v1` | 432 | Survivors: aged and disabled widow(er)s, young families, children |
+| `surv_v1` | 450 | Survivors: aged and disabled widow(er)s, young families, children |
 | `pebs_v1` | 420 | Social Security Statement estimates |
 | `hist_v1` | 414 | Old-start, PIA-table and transitional-guarantee cohorts, 1900–1928 |
 | `dib_v1` | 176 | Disability, freeze and non-freeze computations |
@@ -182,8 +206,9 @@ The differential suites, all penny-exact against the compiled oracle -- 9,176 ca
 | `fam_v1` | 72 | Retirement with spouses and children |
 | `special_v1` | 60 | Disability guarantee, child-care dropout years |
 | `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
+| `freeze_v1` | 16 | Earnings inside a disability freeze window; two periods of disability |
 | `reform_v1` | 3,440 | 172 cases under present law and nineteen reform variants |
-| alternatives I and III | 3,544 | every sweep above re-costed under the low-cost and high-cost projections |
+| alternatives I and III | 3,544 | the eight sweeps above other than the Statement, reform and freeze suites, re-costed under the low-cost and high-cost projections |
 
 Each case is compared field by field: insured status, eligibility year, the
 AIME/PIA/MFB of every applicable method, the winning method, the family
@@ -231,11 +256,18 @@ pytest
   answer to check against, pyanypia does not offer one.
 - **Railroad earnings** are not credited. A `.pia` file containing them
   is refused rather than read with the railroad component dropped.
-- **Statement estimates below full retirement age** cannot be checked
-  against the oracle. Batch anypiab cannot compute them: its disability
-  estimate is set up without a waiting-period date, which the freeze
-  calculation then reads. The engine computes them; nothing here proves
-  them.
+- **The Statement's disability estimate is unavailable below full
+  retirement age.** `PiaCalAny::pebsSetup` builds the disability scenario
+  with an onset date and no waiting-period date, and the freeze
+  calculation then requires one — so the official calculator cannot
+  produce this estimate either, and there is no answer to check against.
+  pyanypia returns the retirement and survivor estimates, which are
+  unaffected, and records the disability one in
+  `StatementResults.unavailable` with the reason; reading
+  `disability_pia` raises rather than returning a number. Above full
+  retirement age the calculator asks for no disability estimate and the
+  question does not arise, which is why the 420-case Statement suite is
+  penny-exact.
 - The windfall elimination provision follows present law, under which it is
   repealed for benefits payable January 2024 and later.
 

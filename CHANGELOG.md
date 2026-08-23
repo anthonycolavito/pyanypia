@@ -52,8 +52,9 @@ below is new to anyone installing this.
 Documented in full in the README, and in short: most of the calculator's
 forty LawChange types never reach the batch path's output and are out of
 scope; the bend-point reforms cannot be computed by the calculator at all
-and are refused; railroad earnings are not credited; and Statement
-estimates below full retirement age are computed but cannot be checked
-against the oracle, which will not produce them.
+and are refused; railroad earnings are not credited; and the Statement's
+disability estimate is unavailable below full retirement age, because the
+official calculator cannot produce one either — the other estimates are
+returned and the reason is recorded on the result.
 
 [0.2.0]: https://github.com/anthonycolavito/pyanypia/releases/tag/v0.2.0

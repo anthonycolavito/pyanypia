@@ -28,6 +28,11 @@ CXXFLAGS := -O2 -std=c++14 -w -DANYPIAB -DONEBIGFILE \
   -I$(WORK)/oactobjs32/linux -I$(WORK)/oactobjs32/include \
   $(BOOST_FLAGS)
 
+# all three targets build the same library objects through their own
+# recursive sub-make, so under -j they compile the same .o paths at the
+# same time -- three times the work, and a race on every object.
+.NOTPARALLEL:
+
 .PHONY: all anypiab prepare clean compile
 
 all: anypiab anypiab-json paramdump
