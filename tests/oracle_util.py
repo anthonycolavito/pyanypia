@@ -16,16 +16,23 @@ def load_params(alt: int = 2) -> dict[str, Any]:
         return json.load(f)
 
 
-def load_sweep(name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+def load_sweep(
+    name: str, alt: int = 2
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Returns [(case_spec, oracle_expected), ...] for a sweep, joined on
-    input order (case_id is cross-checked)."""
+    input order (case_id is cross-checked).
+
+    The same cases are costed under each Trustees alternative, so the
+    manifest is shared and only the golden differs.
+    """
+    suffix = "" if alt == 2 else f"_alt{alt}"
     specs = [
         json.loads(line)
         for line in open(ORACLE / "cases" / name / "manifest.jsonl")
     ]
     expected = [
         json.loads(line)
-        for line in open(ORACLE / "goldens" / f"{name}.jsonl")
+        for line in open(ORACLE / "goldens" / f"{name}{suffix}.jsonl")
     ]
     assert len(specs) == len(expected), f"sweep {name}: manifest/golden mismatch"
     out = []
@@ -234,7 +241,7 @@ def assert_case_matches(r, expected):  # type: ignore[no-untyped-def]
         assert got.pifc == exp["pifc"], "family pifc"
 
 
-def assert_rejects_like_oracle(spec, expected):  # type: ignore[no-untyped-def]
+def assert_rejects_like_oracle(spec, expected, alt=2):  # type: ignore[no-untyped-def]
     """When the oracle errored on a case, pyanypia must reject it too,
     with the same AnyPIA error code."""
     import re
@@ -248,7 +255,7 @@ def assert_rejects_like_oracle(spec, expected):  # type: ignore[no-untyped-def]
     assert m, f"unparseable oracle error: {expected['error']}"
     code = int(m.group(1))
     with pytest.raises(PiaError) as exc_info:
-        compute(worker_from_spec(spec))
+        compute(worker_from_spec(spec), alt=alt)
     assert exc_info.value.code == code, (
         f"oracle code {code}, pyanypia code {exc_info.value.code}"
     )

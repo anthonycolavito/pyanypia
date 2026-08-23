@@ -840,13 +840,30 @@ SWEEPS = {
 }
 
 
+ALTERNATIVES = (1, 2, 3)
+
+
 def write_sweep(name: str) -> int:
+    """Writes the sweep's manifest and one case file per Trustees
+    alternative. The cases themselves are identical; only the assumption
+    indicators on line 40 differ, so the same record is costed under all
+    three sets of projections."""
     cases = SWEEPS[name]()
     outdir = pathlib.Path(__file__).resolve().parent / name
     outdir.mkdir(parents=True, exist_ok=True)
-    with open(outdir / "cases.pia", "w") as f:
-        for c in cases:
-            f.write(c.to_pia())
+    # Statement cases carry their own assumption indicator and
+    # UserAssumptions::pebsasmCheck refuses a Trustees alternative for
+    # them, so they are costed under one set of assumptions only.
+    takes_alts = all(c.ialtbi in ALTERNATIVES for c in cases)
+    for alt in ALTERNATIVES if takes_alts else (2,):
+        filename = "cases.pia" if alt == 2 else f"cases_alt{alt}.pia"
+        with open(outdir / filename, "w") as f:
+            for c in cases:
+                spec = (
+                    dataclasses.replace(c, ialtbi=alt, ialtaw=alt)
+                    if takes_alts else c
+                )
+                f.write(spec.to_pia())
     with open(outdir / "manifest.jsonl", "w") as f:
         for c in cases:
             f.write(json.dumps(dataclasses.asdict(c)) + "\n")

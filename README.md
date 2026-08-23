@@ -169,7 +169,7 @@ reform's name — see [Limitations](#limitations) for why the list is short.
 
 ## Fidelity
 
-The differential suites, all penny-exact against the compiled oracle:
+The differential suites, all penny-exact against the compiled oracle -- 9,176 cases in total:
 
 | Suite | Cases | What it covers |
 |---|---:|---|
@@ -183,6 +183,7 @@ The differential suites, all penny-exact against the compiled oracle:
 | `special_v1` | 60 | Disability guarantee, child-care dropout years |
 | `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
 | `reform_v1` | 3,440 | 172 cases under present law and nineteen reform variants |
+| alternatives I and III | 3,544 | every sweep above re-costed under the low-cost and high-cost projections |
 
 Each case is compared field by field: insured status, eligibility year, the
 AIME/PIA/MFB of every applicable method, the winning method, the family
@@ -196,6 +197,8 @@ make -C oracle/build all             # needs clang++ and Boost headers
 python oracle/cases/generate.py all
 python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
     hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1
+# and the same cases under the other two Trustees alternatives
+python oracle/run_oracle.py retire_v1@1 retire_v1@3   # ... and so on
 pytest
 ```
 

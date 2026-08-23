@@ -28,12 +28,13 @@ def ensure_built() -> None:
         )
 
 
-def run_sweep(name: str) -> None:
+def run_sweep(name: str, alt: int = 2) -> None:
     ensure_built()
     casedir = ORACLE / "cases" / name
-    workdir = ORACLE / "work" / f"run-{name}"
+    suffix = "" if alt == 2 else f"_alt{alt}"
+    workdir = ORACLE / "work" / f"run-{name}{suffix}"
     workdir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(casedir / "cases.pia", workdir / "cases.pia")
+    shutil.copy(casedir / f"cases{suffix}.pia", workdir / "cases.pia")
     proc = subprocess.run(
         [str(ORACLE / "bin" / "anypiab-json")], input="cases\n",
         text=True, cwd=workdir, capture_output=True,
@@ -53,7 +54,7 @@ def run_sweep(name: str) -> None:
             f"WARNING {name}: {len(manifest)} cases but "
             f"{len(results)} oracle results"
         )
-    outpath = ORACLE / "goldens" / f"{name}.jsonl"
+    outpath = ORACLE / "goldens" / f"{name}{suffix}.jsonl"
     with open(outpath, "w") as f:
         # not strict: a case the oracle rejected outright still needs its
         # manifest row, and the length mismatch is reported above
@@ -61,7 +62,7 @@ def run_sweep(name: str) -> None:
             res["case_id"] = spec["case_id"]
             f.write(json.dumps(res) + "\n")
     n_err = sum(1 for r in results if "error" in r)
-    print(f"{name}: {len(results)} results ({n_err} errors) -> {outpath}")
+    print(f"{name}{suffix}: {len(results)} results ({n_err} errors) -> {outpath}")
 
 
 PRESENT_LAW = "present_law"
@@ -168,8 +169,10 @@ def run_reform_sweep(name: str = "reform_v1") -> None:
 
 
 if __name__ == "__main__":
-    for nm in sys.argv[1:] or ["retire_v1"]:
+    # a name may carry an alternative, as in "retire_v1@3"
+    for arg in sys.argv[1:] or ["retire_v1"]:
+        nm, _, alt_str = arg.partition("@")
         if nm.startswith("reform"):
             run_reform_sweep(nm)
         else:
-            run_sweep(nm)
+            run_sweep(nm, int(alt_str) if alt_str else 2)
