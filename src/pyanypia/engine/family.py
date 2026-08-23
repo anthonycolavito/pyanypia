@@ -144,16 +144,16 @@ def ardri_aux_cal(ctx: CalcContext, s: SecondaryState) -> None:
     ben_date = w.benefit_date
     if ctx.ioasdi in (BenefitType.OLD_AGE, BenefitType.DISABILITY):
         if s.major_bic == "B" and not s.is_young_spouse():
-            s.early_ret_age = retire_age.early_age_oab(0, s.kbirth)
+            s.early_ret_age = ctx.params.early_age_oab(0, s.kbirth)
             assert s.age_ent is not None
             if s.age_ent < s.early_ret_age:
                 raise PiaError(PIA_IDS_ARDRI10, "aged spouse too young")
-            s.full_ret_age = retire_age.full_ret_age(s.kbirth_my.year + 62)
+            s.full_ret_age = ctx.params.full_ret_age(s.kbirth_my.year + 62)
             s.months_ardri = retire_age.months_ar_aged_spouse(
                 s.age_ent, ben_date, s.full_ret_age
             )
             s.benefit_factor = retire_age.FACTOR_50
-            s.arf = retire_age.factor_ar_aged_spouse(s.months_ardri)
+            s.arf = ctx.params.factor_ar_aged_spouse(s.months_ardri)
             return
         if s.major_bic in ("B", "C"):
             s.months_ardri = 0
@@ -172,11 +172,11 @@ def ardri_aux_cal(ctx: CalcContext, s: SecondaryState) -> None:
             raise PiaError(PIA_IDS_ARDRI4, "disabled widow too young")
         if not s.age_ent < retire_age.early_age_widow(ben_date):
             raise PiaError(PIA_IDS_ARDRI5, "disabled widow too old")
-        s.full_ret_age = retire_age.full_ret_age(s.kbirth_my.year + 60)
+        s.full_ret_age = ctx.params.full_ret_age(s.kbirth_my.year + 60)
         s.months_ardri = retire_age.months_ar_dis_widow(
             s.age_ent, ben_date, s.full_ret_age
         )
-        s.benefit_factor = retire_age.factor_dis_widow(ben_date)
+        s.benefit_factor = ctx.params.factor_dis_widow(ben_date)
         s.arf = retire_age.factor_ar_dis_widow(
             s.months_ardri, s.member.entitlement
         )
@@ -186,11 +186,11 @@ def ardri_aux_cal(ctx: CalcContext, s: SecondaryState) -> None:
         assert s.age_ent is not None
         if s.age_ent < s.early_ret_age:
             raise PiaError(PIA_IDS_ARDRI6, "aged widow too young")
-        s.full_ret_age = retire_age.full_ret_age(s.kbirth_my.year + 60)
+        s.full_ret_age = ctx.params.full_ret_age(s.kbirth_my.year + 60)
         s.months_ardri = retire_age.months_ar_widow(
             s.age_ent, ben_date, s.full_ret_age
         )
-        s.benefit_factor = retire_age.factor_aged_widow(
+        s.benefit_factor = ctx.params.factor_aged_widow(
             s.months_ardri, s.age_ent, ben_date
         )
         s.arf = retire_age.factor_ar_widow(

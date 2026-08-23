@@ -9,9 +9,10 @@ project wage bases (updateBases) and dependent amounts.
 
 from __future__ import annotations
 
+from datetime import date as _date
 from functools import lru_cache
 
-from pyanypia.dates import MonthYear
+from pyanypia.dates import Age, MonthYear
 from pyanypia.errors import PiaError
 from pyanypia.params import _data2026 as d
 from pyanypia.params import projection, retire_age
@@ -174,6 +175,65 @@ class Params:
             else:
                 rv = self.unapply_cola(rv, year, elig_year)
         return rv
+
+    # ---- law parameters a reform can override ----
+    #
+    # These delegate to present law. A reform supplies a Params subclass
+    # that overrides them, which is how PiaParamsLC works: the engine
+    # always asks its parameter set rather than a module-level function,
+    # so a reform reaches every caller at once.
+
+    def full_ret_age(self, elig_year: int) -> Age:
+        return retire_age.full_ret_age(elig_year)
+
+    def full_ret_age_di(
+        self, elig_year: int, current_year: int
+    ) -> Age:
+        return retire_age.full_ret_age_di(elig_year, current_year)
+
+    def early_age_oab(self, sex: int, kbirth: _date) -> Age:
+        return retire_age.early_age_oab(sex, kbirth)
+
+    def max_dib_age(self, year: int) -> Age:
+        return retire_age.max_dib_age(year)
+
+    def ret_credit(self, elig_year: int) -> float:
+        return retire_age.ret_credit(elig_year)
+
+    def factor_ar(self, months_ardri: int) -> float:
+        return retire_age.factor_ar(months_ardri)
+
+    def factor_dri(self, months_ardri: int, elig_year: int) -> float:
+        return retire_age.factor_dri(months_ardri, elig_year)
+
+    def factor_ar_aged_spouse(self, months_ardri: int) -> float:
+        return retire_age.factor_ar_aged_spouse(months_ardri)
+
+    def factor_aged_spouse(self) -> float:
+        """The aged spouse benefit factor (50% under present law)."""
+        return retire_age.FACTOR_50
+
+    def factor_aged_widow(
+        self, months_ardri: int, age: Age, ben_date: MonthYear
+    ) -> float:
+        return retire_age.factor_aged_widow(months_ardri, age, ben_date)
+
+    def factor_dis_widow(self, ben_date: MonthYear) -> float:
+        return retire_age.factor_dis_widow(ben_date)
+
+    def marr_length_for_div_ben(self) -> int:
+        """Years of marriage a divorced spouse needs (10 under present
+        law)."""
+        return 10
+
+    def n_drop_adjustment(self, elig_year: int) -> int:
+        """Dropout years removed by a reform; none under present law."""
+        return 0
+
+    def use_all_earnings(self, elig_year: int) -> bool:
+        """Whether every year of earnings enters the AIME rather than the
+        highest n; never under present law."""
+        return False
 
     # ---- special minimum ----
 

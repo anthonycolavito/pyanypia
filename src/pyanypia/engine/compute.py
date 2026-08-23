@@ -53,7 +53,7 @@ def calculate(
     earnings.earn_projection(ctx)
     earnings.earn_hi_cal(ctx)
     earnings.earn_limit(ctx)
-    ctx.early_ret_age = retire_age.early_age_oab(worker.sex, ctx.kbirth)
+    ctx.early_ret_age = params.early_age_oab(worker.sex, ctx.kbirth)
     _qc_cal(ctx)
     # PiaCal::calculate2
     earnings.earn_total50_cal0(ctx)

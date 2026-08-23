@@ -43,14 +43,14 @@ def data_check(ctx: CalcContext, ent_date: MonthYear) -> None:
     ):
         raise PiaError(0, "bad benefit type")
     kbirth_my = MonthYear(ctx.kbirth.year, ctx.kbirth.month)
-    ctx.full_ret_age = retire_age.full_ret_age(ctx.kbirth.year + 62)
+    ctx.full_ret_age = ctx.params.full_ret_age(ctx.kbirth.year + 62)
     ctx.full_ret_date = add_age(
         kbirth_my, ctx.full_ret_age.years, ctx.full_ret_age.months
     )
     if ctx.full_ret_date < JAN_1937:
         ctx.full_ret_date = JAN_1937
     if ctx.ioasdi == BenefitType.OLD_AGE:
-        ctx.early_ret_age = retire_age.early_age_oab(w.sex, ctx.kbirth)
+        ctx.early_ret_age = ctx.params.early_age_oab(w.sex, ctx.kbirth)
     if ctx.ioasdi != BenefitType.SURVIVOR:
         assert w.entitlement is not None and w.benefit_date is not None
         months_ent = w.entitlement.index() - kbirth_my.index()
@@ -95,7 +95,9 @@ def age_ent_check(ctx: CalcContext) -> None:
 def freeze_years_cal(ctx: CalcContext, ent_date: MonthYear) -> None:
     """PiaData::freezeYearsCal."""
     w = ctx.worker
-    fra_di = retire_age.full_ret_age_di(ctx.kbirth.year + 62, ent_date.year)
+    fra_di = ctx.params.full_ret_age_di(
+        ctx.kbirth.year + 62, ent_date.year
+    )
     fy = ctx.freeze_years
     fy.clear()
     if w.valdi > 0:
@@ -145,14 +147,14 @@ def ardri_cal(ctx: CalcContext) -> None:
             ctx.months_ardri = retire_age.months_ar(
                 ctx.age_ent, ctx.full_ret_age
             )
-            ctx.arf = retire_age.factor_ar(ctx.months_ardri)
+            ctx.arf = ctx.params.factor_ar(ctx.months_ardri)
         else:
             months_dri_cal(ctx)
     if ctx.ioasdi == BenefitType.DISABILITY:
         ctx.months_ardri = retire_age.months_ar_di(
             ctx.worker.oab_entitlement, ctx.worker.oab_cessation
         )
-        ctx.arf = retire_age.factor_ar(ctx.months_ardri)
+        ctx.arf = ctx.params.factor_ar(ctx.months_ardri)
 
 
 def months_dri_cal(ctx: CalcContext) -> None:
@@ -166,7 +168,7 @@ def months_dri_cal(ctx: CalcContext) -> None:
         ctx.full_ret_date, elig_year, ctx.kbirth, w.entitlement,
         w.benefit_date, ctx.full_ins_date,
     )
-    ctx.arf = retire_age.factor_dri(ctx.months_ardri, elig_year)
+    ctx.arf = ctx.params.factor_dri(ctx.months_ardri, elig_year)
 
 
 def dimax_elig(

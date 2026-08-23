@@ -28,6 +28,7 @@
 #include "piareadAny.h"
 #include "PiaCalAny.h"
 #include "pebs.h"
+#include "LawChangeRead.h"
 #include "PiaException.h"
 #include "PiaMethod.h"
 #include "Secondary.h"
@@ -106,6 +107,17 @@ public:
       WorkerData::getMaxyear());
     lawChange = new LawChangeArray(baseyear->getYear(),
       WorkerData::getMaxyear(), "");
+    // A reform run supplies lawchg.dat next to the case file; without one
+    // every indicator stays 0 and the law-change machinery is inert.
+    {
+      ifstream lawchgTest("lawchg.dat");
+      if (lawchgTest.is_open()) {
+        lawchgTest.close();
+        LawChangeRead(*lawChange).read();
+        cerr << "lawchg.dat applied ("
+             << lawChange->getIndTotal() << " changes)" << endl;
+      }
+    }
     piaparms = new PiaParamsAny(baseyear->getYear(),
       WorkerData::getMaxyear(), *awbidat, *lawChange);
     piaparms->setHistFqinc();
