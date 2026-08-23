@@ -48,6 +48,11 @@ def compute_many(
     items = list(workers)
     if not items:
         return []
+    if params is not None and alt != 2:
+        raise ValueError(
+            "pass params or alt, not both: params already carries its own "
+            "assumptions, so alt would be ignored"
+        )
     if params is None:
         params = present_law(alt)
     n_proc = _process_count(len(items), processes)
@@ -70,6 +75,11 @@ def compute_iter(
 ) -> Iterator[Results]:
     """Computes lazily in this process, for streaming over a large input
     without holding every result in memory."""
+    if params is not None and alt != 2:
+        raise ValueError(
+            "pass params or alt, not both: params already carries its own "
+            "assumptions, so alt would be ignored"
+        )
     if params is None:
         params = present_law(alt)
     for w in workers:

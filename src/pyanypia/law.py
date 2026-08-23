@@ -64,6 +64,13 @@ class NraChange(Change):
 
     variant: int = 1
 
+    def __post_init__(self) -> None:
+        if self.variant not in (1, 2, 3):
+            raise ValueError(
+                f"variant must be 1 (hold at 65), 2 (no plateau) or 3 "
+                f"(rising after 2011), not {self.variant}"
+            )
+
 
 @dataclass(frozen=True)
 class ColaChange(Change):
@@ -204,6 +211,14 @@ class SpecialMinimum(Change):
 
     amount: float = 0.0
 
+    def __post_init__(self) -> None:
+        if self.amount <= 0.0:
+            raise ValueError(
+                "amount is the special minimum's dollars per year of "
+                "coverage and must be given; leaving it at 0 would zero "
+                "the special minimum rather than leave it alone"
+            )
+
 
 @dataclass(frozen=True)
 class WageBaseChange(Change):
@@ -221,7 +236,7 @@ class WageBaseChange(Change):
             raise ValueError(f"wage base missing for years {missing}")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Reform:
     """A set of changes from present law.
 
@@ -569,8 +584,14 @@ class Law:
 
         return cls(_present_law(alt))
 
-    def apply(self, reform: Reform, *, alt: int = 2) -> Law:
-        """This law with `reform` applied."""
+    def apply(self, reform: Reform, *, alt: int | None = None) -> Law:
+        """This law with `reform` applied.
+
+        The alternative defaults to the one this Law already uses, rather
+        than silently reverting to the intermediate set.
+        """
+        if alt is None:
+            alt = self.params.assumptions.alt
         return Law(
             ReformedParams(Assumptions.tr_alternative(alt), reform), reform
         )

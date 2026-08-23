@@ -11,6 +11,7 @@ from pyanypia.engine.statement import (
     StatementType,
     calculate_statement,
 )
+from pyanypia.errors import MissingInput, PiaError
 from pyanypia.law import Law, Reform
 from pyanypia.params import Params, present_law
 from pyanypia.results import MethodResult, Results, results_from_context
@@ -32,8 +33,10 @@ __all__ = [
     "FamilyMember",
     "Law",
     "MethodResult",
+    "MissingInput",
     "MonthYear",
     "Params",
+    "PiaError",
     "Reform",
     "Results",
     "Sex",
@@ -61,6 +64,11 @@ def compute(
     """
     from pyanypia.engine.compute import calculate
 
+    if params is not None and alt != 2:
+        raise ValueError(
+            "pass params or alt, not both: params already carries its own "
+            "assumptions, so alt would be ignored"
+        )
     if params is None:
         params = present_law(alt)
     ctx = calculate(worker, params)

@@ -192,6 +192,21 @@ class Worker:
             object.__setattr__(
                 self, "benefit_date", self.family[0].entitlement
             )
+        # Copy the caller's mappings. `frozen=True` stops the field being
+        # rebound, not the dict being mutated, so aliasing let a caller
+        # change a Worker's earnings after the fact -- and get a different
+        # benefit from the same object.
+        object.__setattr__(self, "earnings", dict(self.earnings))
+        if self.qcs_by_year:
+            object.__setattr__(self, "qcs_by_year", dict(self.qcs_by_year))
+        if self.sex not in (0, 1):
+            raise ValueError(
+                f"sex must be Sex.MALE (0) or Sex.FEMALE (1), not {self.sex}"
+            )
+        if self.benefit_type not in tuple(BenefitType):
+            raise ValueError(
+                f"benefit_type must be a BenefitType, not {self.benefit_type}"
+            )
         if isinstance(self.family, list):
             object.__setattr__(self, "family", tuple(self.family))
         if isinstance(self.disability_periods, list):
