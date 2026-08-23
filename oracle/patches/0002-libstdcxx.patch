@@ -1,0 +1,31 @@
+Portability patch for libstdc++ (GCC), which the Linux CI build uses.
+
+std::rel_ops lives in <utility>. libc++ happens to make the namespace
+visible through <algorithm>, so the macOS build never noticed; libstdc++
+does not, and rejects the using-directive outright:
+
+    error: 'rel_ops' is not a namespace-name
+
+Both files use it for the comparison operators their == and < give them.
+Adding the include they always needed is the whole change.
+
+--- a/oactobjs32/piadata/DisInsCodeArray.cpp	2026-08-23 09:22:42
++++ b/oactobjs32/piadata/DisInsCodeArray.cpp	2026-08-23 09:22:42
+@@ -4,6 +4,7 @@
+ // $Id: DisInsCodeArray.cpp 1.23 2017/08/29 09:01:43EDT 277133 Development  $
+ 
+ #include <algorithm>
++#include <utility>
+ #include "DisInsCodeArray.h"
+ 
+ using namespace std;
+--- a/oactobjs32/piadata/InsCodeArray.cpp	2026-08-23 09:22:42
++++ b/oactobjs32/piadata/InsCodeArray.cpp	2026-08-23 09:22:42
+@@ -4,6 +4,7 @@
+ // $Id: InsCodeArray.cpp 1.20 2017/08/29 09:01:43EDT 277133 Development  $
+ 
+ #include <algorithm>
++#include <utility>
+ #include "InsCodeArray.h"
+ 
+ using namespace std;
