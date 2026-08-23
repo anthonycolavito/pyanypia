@@ -17,6 +17,18 @@ class PiaError(Exception):
         super().__init__(message or f"PIA error {code}")
 
 
+class MissingInput(PiaError):
+    """A `Worker` is missing something the calculation needs.
+
+    AnyPIA has no resource id for these. Its own reader fills the fields
+    in from the case file before any calculation runs, so the C++ never
+    has to ask for them; `code` is 0 to say there is no counterpart.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(0, message)
+
+
 # Resource ids used across the package (transcribed from Resource.h as
 # they are needed; names keep the C++ suffix for greppability).
 PIA_IDS_QCTOT0 = 61437

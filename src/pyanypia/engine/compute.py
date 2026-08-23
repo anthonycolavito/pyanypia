@@ -20,6 +20,7 @@ from pyanypia.engine.methods import (
     wage_indexed,
 )
 from pyanypia.engine.methods.base import MethodState, MethodType
+from pyanypia.errors import MissingInput
 from pyanypia.params import Params, retire_age
 from pyanypia.worker import BenefitType, Worker
 
@@ -42,8 +43,12 @@ def calculate(
             if not worker.family:
                 raise NotYetPorted("survivor case needs family members")
             ent_date = worker.family[0].entitlement
+        elif worker.entitlement is None:
+            raise MissingInput(
+                "entitlement is required: the month this worker becomes "
+                "entitled, as MonthYear(year, month)"
+            )
         else:
-            assert worker.entitlement is not None
             ent_date = worker.entitlement
     secondaries = [fam.SecondaryState(fm) for fm in worker.family]
     ctx.secondaries = secondaries  # type: ignore[attr-defined]

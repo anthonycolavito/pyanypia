@@ -165,6 +165,18 @@ class Worker:
             object.__setattr__(self, "death_date", _as_date(self.death_date))
         if self.benefit_date is None and self.entitlement is not None:
             object.__setattr__(self, "benefit_date", self.entitlement)
+        elif (
+            self.benefit_date is None
+            and self.benefit_type == BenefitType.SURVIVOR
+            and self.family
+        ):
+            # A survivor case has no entitlement of its own -- the
+            # worker is dead -- so the benefit date comes from the first
+            # family member, the same rule the engine uses to pick the
+            # entitlement date for one.
+            object.__setattr__(
+                self, "benefit_date", self.family[0].entitlement
+            )
         if isinstance(self.family, list):
             object.__setattr__(self, "family", tuple(self.family))
         if isinstance(self.disability_periods, list):

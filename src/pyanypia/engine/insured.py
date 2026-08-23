@@ -12,6 +12,7 @@ from datetime import date
 
 from pyanypia.dates import MonthYear, QtrYear
 from pyanypia.engine.context import CalcContext, CompPeriod, FreezeYears
+from pyanypia.errors import MissingInput
 from pyanypia.params import retire_age
 from pyanypia.worker import BenefitType, Worker
 
@@ -770,7 +771,12 @@ def qc_dis_req_non_freeze_cal(
     w = ctx.worker
     if w.valdi > 0:
         wp = w.disability_periods[0].waiting_period_start
-        assert wp is not None
+        if wp is None:
+            raise MissingInput(
+                "this disability period needs waiting_period_start, the "
+                "month the five-month waiting period begins; the "
+                "non-freeze computation is measured from it"
+            )
         d2 = QtrYear.from_month_year(wp)
     else:
         d2 = QtrYear.from_month_year(date_moyr)

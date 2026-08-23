@@ -8,7 +8,7 @@ from datetime import date
 
 from pyanypia.dates import Age, MonthYear
 from pyanypia.engine.context import CalcContext
-from pyanypia.errors import PiaError
+from pyanypia.errors import MissingInput, PiaError
 from pyanypia.params import retire_age
 from pyanypia.rounding import round_benefit, round_to_dollar
 from pyanypia.worker import BenefitType, FamilyMember
@@ -86,7 +86,13 @@ def data_check_aux(
 ) -> None:
     """PiaCal::dataCheckAux."""
     w = ctx.worker
-    assert w.benefit_date is not None
+    if w.benefit_date is None:
+        raise MissingInput(
+            "benefit_date is required for a case with family members: "
+            "the month the benefit is paid for, as MonthYear(year, "
+            "month). A survivor case has no entitlement of its own to "
+            "take it from"
+        )
     for s in secondaries:
         if s.major_bic == " ":
             break

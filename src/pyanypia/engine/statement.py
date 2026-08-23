@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from pyanypia.dates import Age, MonthYear
+from pyanypia.errors import PiaError
 from pyanypia.params import Params, params_for, present_law, retire_age
 from pyanypia.results import Results, results_from_context
 from pyanypia.worker import (
@@ -72,6 +73,9 @@ class StatementResults:
     full_retirement_age: Age
     quarters_of_coverage: int
     estimates: dict[StatementType, StatementEstimate]
+    #: Estimates the calculator cannot produce, and why. Reading one
+    #: through its property raises rather than returning a number.
+    unavailable: dict[StatementType, str] = field(default_factory=dict)
 
     @property
     def retirement_early(self) -> int:
@@ -91,6 +95,10 @@ class StatementResults:
 
     @property
     def disability_pia(self) -> int:
+        if StatementType.DISABILITY in self.unavailable:
+            raise PiaError(
+                0, self.unavailable[StatementType.DISABILITY]
+            )
         return self.estimates[StatementType.DISABILITY].pia
 
     def detail(self) -> str:
@@ -102,7 +110,13 @@ class StatementResults:
             f"retirement at FRA: ${self.retirement_full}",
             f"retirement early:  ${self.retirement_early}",
             f"survivor benefit:  ${self.survivor_benefit}",
-            f"disability PIA:    ${self.disability_pia}",
+            (
+                "disability PIA:    unavailable "
+                "(the calculator cannot compute one below full "
+                "retirement age)"
+                if StatementType.DISABILITY in self.unavailable
+                else f"disability PIA:    ${self.disability_pia}"
+            ),
         ])
 
 
@@ -274,9 +288,23 @@ def calculate_statement(
         kbirth, istart, month_now, age_plan
     )
     estimates: dict[StatementType, StatementEstimate] = {}
+    unavailable: dict[StatementType, str] = {}
     current = base
     qc_total = 0
     for kind in StatementType:
+        if kind is StatementType.DISABILITY and pebs_dib >= 1:
+            # PiaCalAny::pebsSetup builds the disability scenario with an
+            # onset date and no waiting-period date, and the freeze
+            # calculation then reads one. The official calculator has the
+            # same gap, so there is no answer to match and none is
+            # invented; the other estimates are unaffected.
+            unavailable[kind] = (
+                "the calculator cannot produce a disability estimate for "
+                "a worker below full retirement age: PiaCalAny::pebsSetup "
+                "leaves the waiting-period date unset and the freeze "
+                "calculation requires it"
+            )
+            continue
         nxt = _setup(
             kind, base, istart, month_now, age_plan, age_plan2,
             age_now, pebs_oab, pebs_dib,
@@ -298,6 +326,7 @@ def calculate_statement(
         full_retirement_age=retire_age.full_ret_age(kbirth.year + 62),
         quarters_of_coverage=qc_total,
         estimates=estimates,
+        unavailable=unavailable,
     )
 
 

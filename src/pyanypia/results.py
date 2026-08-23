@@ -66,12 +66,18 @@ class Results:
     def mba(self) -> float:
         return self.monthly_benefit
 
+    @property
+    def is_wage_indexed(self) -> bool:
+        """Whether `aime` is an indexed average. Eligibility before 1979
+        has no wage-indexed method, and the figure is a plain AME."""
+        return "WAGE_IND" in self.methods
+
     def detail(self) -> str:
         lines = [
             f"insured: {self.fully_insured_code} "
             f"({'fully insured' if self.insured else 'NOT fully insured'})",
             f"eligibility year: {self.elig_year}",
-            f"AIME: {self.aime:.0f}",
+            f"{'AIME' if self.is_wage_indexed else 'AME'}: {self.aime:.0f}",
         ]
         for name, m in self.methods.items():
             mark = " *" if name == self.method else ""
@@ -102,6 +108,13 @@ def results_from_context(ctx: CalcContext) -> Results:
         )
         if name == "WAGE_IND":
             aime = m.ame
+    winner = METHOD_NAME.get(ctx.iappn, " ")
+    if "WAGE_IND" not in by_name and winner in by_name:
+        # Eligibility before 1979 has no wage-indexed method at all, so
+        # there is no AIME to report. The figure the winning method works
+        # from is an AME -- an average monthly wage, not indexed -- and
+        # reporting that beats reporting nothing.
+        aime = by_name[winner].ame
     from pyanypia.engine.insured import is_disability_insured
 
     fam_results = tuple(
@@ -131,7 +144,7 @@ def results_from_context(ctx: CalcContext) -> Results:
         months_reduction_or_credit=ctx.months_ardri,
         reduction_factor=ctx.arf,
         age_at_benefit=ctx.age_ben,
-        method=METHOD_NAME.get(ctx.iappn, " "),
+        method=winner,
         pifc=ctx.pifc,
         methods=by_name,
         family=fam_results,

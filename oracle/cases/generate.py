@@ -826,6 +826,91 @@ def reform_v1() -> list[CaseSpec]:
     return cases
 
 
+def freeze_v1() -> list[CaseSpec]:
+    """Cases where the disability freeze actually bites, and cases with
+    two of them.
+
+    The non-freeze computation answers "what if the freeze had not
+    applied", so the only cases that can tell it apart from the ordinary
+    one are those with earnings inside a freeze window. No other sweep
+    has any, and none has a second period of disability either, which is
+    how a defect in exactly that branch survived every suite.
+    """
+    cases: list[CaseSpec] = []
+    n = 70000
+
+    def career(first: int, last: int) -> dict[int, float]:
+        return {
+            y: round(min(AWI[y], BASE[y]), 2)
+            for y in range(first, last + 1) if y in AWI
+        }
+
+    # --- a current disability, still earning after onset ---------------
+    for by in [1955, 1965, 1975]:
+        dob = (by, 3, 15)
+        for onset_age in [40, 50]:
+            onset_year = by + onset_age
+            if not 1990 <= onset_year <= 2015:
+                continue
+            earn = career(by + 22, min(onset_year + 8, 2025))
+            if len(earn) < 4:
+                continue
+            ent = (onset_year, 12)
+            for ben_label, months in (("ent", 0), ("+2y", 24)):
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"z1-{by}-o{onset_age}-{ben_label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=3,
+                    ent=ent, bendate=add_months(ent, months), earnings=earn,
+                    onset=(onset_year, 6, 15), waitper=(onset_year, 7),
+                ))
+
+    # --- a period that ceased, then old age, earning throughout --------
+    for by in [1950, 1958]:
+        dob = (by, 3, 15)
+        onset_year = by + 45
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        earn = career(by + 22, ent[0] - 1)
+        if len(earn) < 4:
+            continue
+        n += 1
+        cases.append(CaseSpec(
+            case_id=f"z1c-{by}-ceased",
+            ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+            ent=ent, bendate=ent, earnings=earn,
+            onset=(onset_year, 6, 15), waitper=(onset_year, 7),
+            prior_ent=(onset_year, 12), cessation=(onset_year + 6, 6),
+            cessation_pia=900.00, cessation_mfb=1350.00,
+        ))
+
+    # --- two periods of disability (valdi == 2) ------------------------
+    for by in [1950, 1960]:
+        dob = (by, 3, 15)
+        early, late = by + 32, by + 48
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        earn = career(by + 22, ent[0] - 1)
+        if len(earn) < 4:
+            continue
+        for gap_label, late_cess_years in (("short", 5), ("long", 8)):
+            n += 1
+            cases.append(CaseSpec(
+                case_id=f"z1t-{by}-two-{gap_label}",
+                ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                ent=ent, bendate=ent, earnings=earn,
+                # line 09 is the later period, line 10 the earlier one
+                onset=(late, 6, 15), waitper=(late, 7),
+                prior_ent=(late, 12),
+                cessation=(late + late_cess_years, 6),
+                cessation_pia=900.00, cessation_mfb=1350.00,
+                onset2=(early, 6, 15), waitper2=(early, 7),
+                prior_ent2=(early, 12), cessation2=(early + 4, 6),
+                cessation2_pia=900.00, cessation2_mfb=1350.00,
+            ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
@@ -837,10 +922,24 @@ SWEEPS = {
     "proj_v1": proj_v1,
     "pebs_v1": pebs_v1,
     "reform_v1": reform_v1,
+    "freeze_v1": freeze_v1,
 }
 
 
 ALTERNATIVES = (1, 2, 3)
+
+
+def _write_atomically(path: pathlib.Path, text: str) -> None:
+    """Write via a temporary file and rename.
+
+    Writing in place truncates before the first byte is produced, so a
+    failure part way through -- pyanypia not importable, say -- leaves a
+    committed fixture empty and the repository dirty. Nothing should be
+    able to corrupt a golden input by being run wrong.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
 
 
 def write_sweep(name: str) -> int:
@@ -857,16 +956,16 @@ def write_sweep(name: str) -> int:
     takes_alts = all(c.ialtbi in ALTERNATIVES for c in cases)
     for alt in ALTERNATIVES if takes_alts else (2,):
         filename = "cases.pia" if alt == 2 else f"cases_alt{alt}.pia"
-        with open(outdir / filename, "w") as f:
-            for c in cases:
-                spec = (
-                    dataclasses.replace(c, ialtbi=alt, ialtaw=alt)
-                    if takes_alts else c
-                )
-                f.write(spec.to_pia())
-    with open(outdir / "manifest.jsonl", "w") as f:
-        for c in cases:
-            f.write(json.dumps(dataclasses.asdict(c)) + "\n")
+        _write_atomically(outdir / filename, "".join(
+            (
+                dataclasses.replace(c, ialtbi=alt, ialtaw=alt)
+                if takes_alts else c
+            ).to_pia()
+            for c in cases
+        ))
+    _write_atomically(outdir / "manifest.jsonl", "".join(
+        json.dumps(dataclasses.asdict(c)) + "\n" for c in cases
+    ))
     print(f"{name}: {len(cases)} cases")
     return len(cases)
 

@@ -31,13 +31,14 @@ def index_earnings(
     year2: int,
     year3: int,
     earnings: dict[int, float],
+    non_freeze: bool = False,
 ) -> None:
     """WageIndGeneral::indexEarnings — index through year2 (eligYear-2),
     use nominal earnings after; freeze years excluded."""
     avg_wage = ctx.params.fq
     index_year_avg_wage = avg_wage[year2]
     for year in range(year1, year2 + 1):
-        if not ctx.freeze_years.is_freeze_year(year):
+        if non_freeze or not ctx.freeze_years.is_freeze_year(year):
             m.earn_multiplied[year] = (
                 index_year_avg_wage * earnings.get(year, 0.0)
             )
@@ -47,7 +48,7 @@ def index_earnings(
             m.earn_multiplied[year] = 0.0
             m.earn_indexed[year] = 0.0
     for year in range(year2, year3 + 1):
-        if not ctx.freeze_years.is_freeze_year(year):
+        if non_freeze or not ctx.freeze_years.is_freeze_year(year):
             m.earn_multiplied[year] = 0.0
             m.earn_indexed[year] = earnings.get(year, 0.0)
         else:
@@ -175,7 +176,7 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
     year1 = ctx.earn50(with_totalization=True)
     year2 = ctx.earn_year
     year5 = ctx.elig_year_non_freeze if non_freeze else ctx.elig_year
-    index_earnings(ctx, m, year1, year5 - 2, year2, earnings)
+    index_earnings(ctx, m, year1, year5 - 2, year2, earnings, non_freeze)
     n = (
         ctx.comp_period_new_non_freeze.n if non_freeze
         else ctx.comp_period_new.n
