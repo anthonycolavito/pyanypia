@@ -62,6 +62,10 @@ class PiaCase:
     ssn: str = ""
     name: str = ""
     address: tuple[str, ...] = ()
+    # line 05: the month the Statement is prepared in and the age the
+    # worker plans to retire at (0 for none)
+    statement_month: int = 0
+    statement_age_plan: int = 0
 
 
 # ---------------------------------------------------------------- reading
@@ -153,6 +157,8 @@ class _Record:
         self.assumptions = AssumptionSpec()
         self.istart2 = 0
         self.has_railroad = False
+        self.statement_month = 0
+        self.statement_age_plan = 0
 
     def worker(self) -> Worker:
         if self.dob is None:
@@ -205,6 +211,8 @@ class _Record:
             ssn=self.ssn,
             name=self.name,
             address=tuple(a for a in self.address if a),
+            statement_month=self.statement_month,
+            statement_age_plan=self.statement_age_plan,
         )
 
 
@@ -225,7 +233,8 @@ def _parse_line(rec: _Record, kind: int, body: str) -> None:
     elif kind == 4:
         rec.benefit_date = _month_year(body[0:6])
     elif kind == 5:
-        pass  # statement information; nothing the calculation consumes
+        rec.statement_month = _int(body[0:2])
+        rec.statement_age_plan = _int(body[2:4])
     elif kind == 6:
         rec.ibegin = _int(body[0:4])
         rec.iend = _int(body[4:8])
@@ -460,6 +469,10 @@ def write_case(case: PiaCase) -> str:
     out.append(f"01{ssn}{w.sex}{_fmt_date(w.dob)}")
     if w.death_date is not None:
         out.append(f"02{_fmt_date(w.death_date)}")
+    if case.statement_month:
+        out.append(
+            f"05{case.statement_month:02d}{case.statement_age_plan:02d}"
+        )
     # a survivor case carries no entitlement of its own; the reader skips
     # this field for that benefit type, so zeros are what belongs here
     ent = _fmt_moyr(w.entitlement) if w.entitlement is not None else "000000"

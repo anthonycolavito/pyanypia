@@ -27,6 +27,7 @@
 #include "LawChangeArray.h"
 #include "piareadAny.h"
 #include "PiaCalAny.h"
+#include "pebs.h"
 #include "PiaException.h"
 #include "PiaMethod.h"
 #include "Secondary.h"
@@ -149,6 +150,28 @@ public:
     j << ",\"age_ben_months\":"
       << (workerBen ? piaData->ageBen.getMonths() : 0);
     j << ",\"pifc\":\"" << piaData->getPifc() << "\"";
+    // A Statement case runs the whole calculation five times over
+    // mutated inputs, so its answers live in Pebs rather than PiaData.
+    if (workerData->getJoasdi() == WorkerData::PEBS_CALC) {
+      j << ",\"pebs\":{";
+      j << "\"oab_early\":" << pebs->getBenefitPebs(Pebs::PEBS_OAB_EARLY);
+      j << ",\"oab_full\":" << pebs->getBenefitPebs(Pebs::PEBS_OAB_FULL);
+      j << ",\"oab_delayed\":"
+        << pebs->getBenefitPebs(Pebs::PEBS_OAB_DELAYED);
+      j << ",\"surv_benefit\":" << pebs->getBenefitPebs(Pebs::PEBS_SURV);
+      j << ",\"surv_pia\":" << pebs->getPiaPebs(Pebs::PEBS_SURV);
+      j << ",\"surv_mfb\":" << pebs->getMfbPebs(Pebs::PEBS_SURV);
+      j << ",\"disab_pia\":" << pebs->getPiaPebs(Pebs::PEBS_DISAB);
+      j << ",\"disab_mfb\":" << pebs->getMfbPebs(Pebs::PEBS_DISAB);
+      j << ",\"qc_total\":" << pebs->getQcTotal();
+      j << ",\"qc_dis_req\":" << pebs->getQcDisReq();
+      j << ",\"qc_dis_total\":" << pebs->getQcDisTotal();
+      j << ",\"pebs_oab\":" << pebs->getPebsOab();
+      j << ",\"pebs_dib\":" << pebs->getPebsDib();
+      j << ",\"age_now_years\":" << pebs->ageNow.getYears();
+      j << ",\"age_now_months\":" << pebs->ageNow.getMonths();
+      j << "}";
+    }
     if (piacal->highPiaMethod != 0) {
       j << ",\"high_method\":\""
         << methodName(piacal->highPiaMethod->getMethod()) << "\"";

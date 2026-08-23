@@ -655,6 +655,41 @@ def proj_v1() -> list[CaseSpec]:
     return cases
 
 
+def pebs_v1() -> list[CaseSpec]:
+    """Social Security Statement cases.
+
+    Restricted to workers already at full retirement age, because batch
+    anypiab cannot compute a Statement below that: it runs a disability
+    estimate whose pebsSetup never sets the waiting-period date, while
+    freezeYearsCal reads it, so the freeze period inverts and the quarter
+    arithmetic underflows.
+    """
+    cases: list[CaseSpec] = []
+    n = 80000
+    istart = 2026
+    for by in [1935, 1940, 1945, 1950, 1953, 1955, 1958]:
+        dob = (by, 3, 15)
+        for pat in ["steady", "max", "half", "sporadic", "declining"]:
+            earn = earnings_pattern(pat, by, istart - 1)
+            if not earn:
+                continue
+            qct, qc51 = summary_qcs(earn)
+            for month in (1, 6, 11):
+                for age_plan in (0, 62, 65, 70):
+                    n += 1
+                    cases.append(CaseSpec(
+                        case_id=f"b1-{by}-{pat}-m{month}-a{age_plan}",
+                        ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=4,
+                        ent=(istart, month), bendate=(istart, month),
+                        earnings=earn,
+                        pebs_month=month, pebs_age_plan=age_plan,
+                        qctottd=qct if min(earn) <= 1977 else None,
+                        qctot51td=qc51,
+                        ialtbi=5, ialtaw=5,
+                    ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
@@ -664,6 +699,7 @@ SWEEPS = {
     "special_v1": special_v1,
     "total_v1": total_v1,
     "proj_v1": proj_v1,
+    "pebs_v1": pebs_v1,
 }
 
 

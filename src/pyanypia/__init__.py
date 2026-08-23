@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from pyanypia.dates import Age, MonthYear
+from pyanypia.engine.statement import (
+    StatementEstimate,
+    StatementResults,
+    StatementType,
+    calculate_statement,
+)
 from pyanypia.params import Params, present_law
 from pyanypia.results import MethodResult, Results, results_from_context
 from pyanypia.worker import (
@@ -25,7 +31,11 @@ __all__ = [
     "Params",
     "Results",
     "Sex",
+    "StatementEstimate",
+    "StatementResults",
+    "StatementType",
     "Worker",
+    "calculate_statement",
     "compute",
     "present_law",
 ]

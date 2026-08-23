@@ -28,17 +28,23 @@ class NotYetPorted(NotImplementedError):
     """A case reached a computation method not yet ported."""
 
 
-def calculate(worker: Worker, params: Params) -> CalcContext:
+def calculate(
+    worker: Worker, params: Params, *, ent_date: MonthYear | None = None
+) -> CalcContext:
+    """`ent_date` overrides the entitlement date the calculation runs on;
+    a Statement's survivor estimate needs it, since that case has no
+    family member to take the date from."""
     from pyanypia.engine import family as fam
 
     ctx = CalcContext(worker=worker, params=params)
-    if worker.benefit_type == BenefitType.SURVIVOR:
-        if not worker.family:
-            raise NotYetPorted("survivor case needs family members")
-        ent_date = worker.family[0].entitlement
-    else:
-        assert worker.entitlement is not None
-        ent_date = worker.entitlement
+    if ent_date is None:
+        if worker.benefit_type == BenefitType.SURVIVOR:
+            if not worker.family:
+                raise NotYetPorted("survivor case needs family members")
+            ent_date = worker.family[0].entitlement
+        else:
+            assert worker.entitlement is not None
+            ent_date = worker.entitlement
     secondaries = [fam.SecondaryState(fm) for fm in worker.family]
     ctx.secondaries = secondaries  # type: ignore[attr-defined]
     benefit.data_check(ctx, ent_date)

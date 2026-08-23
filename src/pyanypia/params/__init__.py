@@ -204,3 +204,10 @@ class Params:
 def present_law(alt: int = 2) -> Params:
     """Present-law parameters under a Trustees Report alternative."""
     return Params(Assumptions.tr_alternative(alt))
+
+
+@lru_cache(maxsize=16)
+def params_for(ialtbi: int, ialtaw: int) -> Params:
+    """Present-law parameters with the benefit-increase and average-wage
+    assumptions chosen separately, as a .pia assumption line does."""
+    return Params(Assumptions.for_alternatives(ialtbi, ialtaw))

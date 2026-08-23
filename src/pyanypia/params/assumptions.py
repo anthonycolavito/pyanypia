@@ -30,12 +30,39 @@ class Assumptions:
     def tr_alternative(cls, alt: int) -> Assumptions:
         if alt not in (1, 2, 3):
             raise ValueError(f"alternative must be 1, 2, or 3; got {alt}")
-        bi = getattr(d, f"CPIINC_PROJ_ALT{alt}")
-        bi_first = getattr(d, f"CPIINC_PROJ_ALT{alt}_FIRST")
-        aw = getattr(d, f"FQINC_PROJ_ALT{alt}")
-        aw_first = getattr(d, f"FQINC_PROJ_ALT{alt}_FIRST")
         return cls(
             alt=alt,
-            biproj={bi_first + i: v for i, v in enumerate(bi)},
-            awincproj={aw_first + i: v for i, v in enumerate(aw)},
+            biproj=cls._bi_path(alt),
+            awincproj=cls._aw_path(alt),
         )
+
+    @classmethod
+    def for_alternatives(cls, ialtbi: int, ialtaw: int) -> Assumptions:
+        """The benefit-increase and average-wage paths chosen
+        independently, as the .pia assumption line allows.
+
+        1-3 are the Trustees Report alternatives. 5 (flat) and 6 (the old
+        Statement assumptions) project no increases at all, which is what
+        BiprojNonFile/AwincNonFile assign for any non-TR alternative.
+        """
+        return cls(
+            alt=ialtbi,
+            biproj=cls._bi_path(ialtbi),
+            awincproj=cls._aw_path(ialtaw),
+        )
+
+    @staticmethod
+    def _bi_path(alt: int) -> dict[int, float]:
+        if alt not in (1, 2, 3):
+            return {y: 0.0 for y in range(d.ISTART, d.MAXYEAR + 1)}
+        bi = getattr(d, f"CPIINC_PROJ_ALT{alt}")
+        first = getattr(d, f"CPIINC_PROJ_ALT{alt}_FIRST")
+        return {first + i: v for i, v in enumerate(bi)}
+
+    @staticmethod
+    def _aw_path(alt: int) -> dict[int, float]:
+        if alt not in (1, 2, 3):
+            return {y: 0.0 for y in range(d.ISTART - 1, d.MAXYEAR + 1)}
+        aw = getattr(d, f"FQINC_PROJ_ALT{alt}")
+        first = getattr(d, f"FQINC_PROJ_ALT{alt}_FIRST")
+        return {first + i: v for i, v in enumerate(aw)}

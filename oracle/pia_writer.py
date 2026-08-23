@@ -86,6 +86,9 @@ class CaseSpec:
     # line-95 lump is what totalization needs, because relEarnPositionCal
     # reads the per-year array.
     qcs_by_year: dict[int, int] | None = None
+    # Statement (line 05): month prepared, planned retirement age
+    pebs_month: int = 0
+    pebs_age_plan: int = 0
     istart: int = 2026
     ialtbi: int = 2
     ialtaw: int = 2
@@ -194,4 +197,6 @@ class CaseSpec:
                 ialtaw=self.ialtaw, ibasch=self.ibasch,
             ),
             ssn=self.ssn,
+            statement_month=self.pebs_month,
+            statement_age_plan=self.pebs_age_plan,
         ))
