@@ -122,8 +122,12 @@ public:
     j << ",\"dob\":\""
       << DateFormatter::toString(workerData->getBirthDate(), "s") << "\"";
     j << ",\"fins\":\"" << piaData->getFinsCode2() << "\"";
+    // disInsCode is only computed for a disability case and is not
+    // cleared between cases, so anything else would report the previous
+    // disability case in the batch.
     j << ",\"dib_insured\":"
-      << (piaData->disInsCode.isDisabilityInsured() ? "true" : "false");
+      << ((workerData->getJoasdi() == WorkerData::DISABILITY &&
+           piaData->disInsCode.isDisabilityInsured()) ? "true" : "false");
     j << ",\"elig_year\":" << piaData->getEligYear();
     j << ",\"high_pia\":" << num(piaData->highPia.get());
     j << ",\"high_mfb\":" << num(piaData->highMfb.get());

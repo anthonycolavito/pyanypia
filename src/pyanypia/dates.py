@@ -54,6 +54,10 @@ class MonthYear:
     def months_since(self, other: MonthYear) -> int:
         return self.index() - other.index()
 
+    def month_before(self) -> MonthYear:
+        """DateMoyr::getMonthBefore."""
+        return self.add_months(-1)
+
     def __str__(self) -> str:
         return f"{self.year:04d}-{self.month:02d}"
 

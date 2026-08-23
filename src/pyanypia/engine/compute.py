@@ -10,6 +10,8 @@ from pyanypia.dates import MonthYear
 from pyanypia.engine import benefit, earnings, insured
 from pyanypia.engine.context import CalcContext
 from pyanypia.engine.methods import (
+    childcare,
+    dib_guar,
     frozen_min,
     old_start,
     pia_table,
@@ -51,6 +53,8 @@ def calculate(worker: Worker, params: Params) -> CalcContext:
     earnings.earn_total50_cal0(ctx)
     benefit.freeze_years_cal(ctx, ent_date)
     earnings.earn_year_cal(ctx)
+    if worker.totalize:
+        earnings.totalize_cal(ctx)
     insured.n_cal(ctx, ctx.comp_period_new, ent_date)
     insured.n_non_freeze_cal(ctx, ctx.comp_period_new_non_freeze, ent_date)
     # piaCal: run applicable methods
@@ -150,9 +154,6 @@ def _run_methods(ctx: CalcContext, ent_date: MonthYear) -> list[MethodState]:
     ctx.iapps = ctx.iappn = -1
     _set_amend90(ctx, ent_date)
     methods: list[MethodState] = []
-    # gates for methods not yet ported are loud, never silently wrong
-    if w.totalize:
-        raise NotYetPorted("totalization lands in phase 5")
     if old_start.is_applicable(ctx):
         insured.nelapsed_cal(ctx, ctx.comp_period_old, ent_date)
         insured.n_cal(ctx, ctx.comp_period_old, ent_date)
@@ -167,14 +168,10 @@ def _run_methods(ctx: CalcContext, ent_date: MonthYear) -> list[MethodState]:
         methods.append(special_min.calculate(ctx))
     if frozen_min.is_applicable(ctx):
         methods.append(frozen_min.calculate(ctx))
-    if ctx.elig_year > 1978 and (
-        w.valdi > 1
-        or (
-            w.valdi > 0
-            and ctx.ioasdi in (BenefitType.OLD_AGE, BenefitType.SURVIVOR)
-        )
-    ):
-        raise NotYetPorted("DIB guarantee lands with dib_v2")
+    if childcare.is_applicable(ctx):
+        methods.append(childcare.calculate(ctx))
+    if dib_guar.is_applicable(ctx):
+        methods.append(dib_guar.calculate(ctx))
     if _non_freeze_applicable(ctx):
         methods.append(wage_indexed.calculate(ctx, non_freeze=True))
     return methods

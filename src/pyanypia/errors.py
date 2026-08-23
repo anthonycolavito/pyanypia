@@ -19,6 +19,8 @@ class PiaError(Exception):
 
 # Resource ids used across the package (transcribed from Resource.h as
 # they are needed; names keep the C++ suffix for greppability).
+PIA_IDS_QCTOT0 = 61437
+PIA_IDS_RELERNPOS = 62050
 PIA_IDS_ROUND = 62033
 PIA_IDS_DATEMONTH = 62055
 PIA_IDS_DATEYEAR = 62056

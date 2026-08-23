@@ -93,7 +93,7 @@ def impute_earnings(
     """OldStart::imputeEarnings — spreads the pre-1951 earnings total over
     years. Returns the divisor used. The pre-1965 methods instead use the
     actual yearly amounts."""
-    earnings = ctx.earn_oasdi_limited
+    earnings = ctx.method_earnings()
     if method_os in (
         OldStartType.OS1939, OldStartType.OS1950,
         OldStartType.OS1958, OldStartType.OS1965,
@@ -121,7 +121,7 @@ def impute_earnings(
         i2 = min(i3, max(YEAR37, min(year21, 1950)))
         divisor_os = i3 - i2 + 1
     baset = ctx.params.base_oasdi[YEAR37]
-    earn_total50 = ctx.get_earn_total50()
+    earn_total50 = ctx.get_earn_total50(w.totalize)
     if earn_total50 > baset * float(divisor_os):
         if w.dob.year > YEAR37:
             # assign backwards in wage-base increments, stopping at birth
@@ -156,12 +156,19 @@ def increment_cal(ctx: CalcContext, method_os: OldStartType) -> int:
     ):
         return sum(
             1 for year in range(YEAR37, 1951)
-            if ctx.earn_oasdi_limited.get(year, 0.0) >= 200.0
+            if ctx.method_earnings().get(year, 0.0) >= 200.0
         )
     if method_os == OldStartType.OS1967:
         return 14
     return min(
-        14, max(4, int(ctx.get_earn_total50() / AMT_PER_INC_YEAR))
+        14,
+        max(
+            4,
+            int(
+                ctx.get_earn_total50(ctx.worker.totalize)
+                / AMT_PER_INC_YEAR
+            ),
+        ),
     )
 
 
@@ -179,7 +186,7 @@ def calculate(ctx: CalcContext, ent_date: MonthYear) -> MethodState:
         yr2 = ctx.elig_year - 1
     for yr in range(YEAR51, yr2 + 1):
         if not ctx.freeze_years.is_freeze_year(yr):
-            m.earn_indexed[yr] = ctx.earn_oasdi_limited.get(yr, 0.0)
+            m.earn_indexed[yr] = ctx.method_earnings().get(yr, 0.0)
     n = ctx.comp_period_old.n
     base.order_earnings(m, YEAR37, yr2, n)
     base.total_earn_cal(m, YEAR37, yr2, n)
@@ -233,6 +240,8 @@ def calculate(ctx: CalcContext, ent_date: MonthYear) -> MethodState:
             ctx, m.pia_elig, ctx.elig_year, w.benefit_date
         )
         bend_mfb = ctx.params.bend_points_mfb(ctx.elig_year)
+        if w.totalize:
+            base.prorate(ctx, m)
         portion_pia_elig = base.set_portion_pia_elig(
             m.pia_elig[m.year_first], bend_mfb
         )

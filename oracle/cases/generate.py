@@ -19,7 +19,7 @@ import sys
 ORACLE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ORACLE))
 
-from pia_writer import CaseSpec  # noqa: E402
+from pia_writer import CaseSpec, FamilyMemberSpec  # noqa: E402
 
 PARAMS = json.load(open(ORACLE / "goldens" / "params_alt2.json"))
 AWI = {int(y): v["fq"] for y, v in PARAMS["years"].items() if v["fq"] is not None}
@@ -51,6 +51,27 @@ def add_months(ym: tuple[int, int], months: int) -> tuple[int, int]:
     y, m = ym
     t = y * 12 + (m - 1) + months
     return t // 12, t % 12 + 1
+
+
+def earliest_oab(dob: tuple[int, int, int]) -> tuple[int, int]:
+    """Earliest old-age entitlement: age 62, or age 62 and 1 month for
+    anyone born after 2 September 1919 (1981 amendments; see
+    PiaParams::earlyAgeOabCal)."""
+    kbirth = (dob[0], dob[1], dob[2] - 1)
+    extra = 1 if kbirth > (1919, 9, 2) else 0
+    return attain_month(dob, 62, extra)
+
+
+def summary_qcs(earn: dict[int, float]) -> tuple[int, int]:
+    """(qctottd, qctot51td) for line 95: four quarters for each year with
+    earnings, capped at the 1937-77 and 1951-77 maxima. Batch anypiab
+    never derives pre-1978 quarters from earnings, so any case whose work
+    history reaches back that far has to state them."""
+    pre51 = min(56, 4 * sum(1 for y, v in earn.items() if y < 1951 and v > 0))
+    p5177 = min(
+        108, 4 * sum(1 for y, v in earn.items() if 1951 <= y <= 1977 and v > 0)
+    )
+    return pre51 + p5177, p5177
 
 
 def earnings_pattern(kind: str, dob_year: int, last_year: int
@@ -306,23 +327,6 @@ def hist_v1() -> list[CaseSpec]:
     patterns = ["steady", "max", "half", "sporadic", "declining"]
     n = 40000
 
-    def earliest_oab(dob: tuple[int, int, int]) -> tuple[int, int]:
-        """Earliest old-age entitlement: age 62, or 62 and 1 month for
-        anyone born after 2 September 1919 (1981 amendments; see
-        PiaParams::earlyAgeOabCal)."""
-        kbirth = (dob[0], dob[1], dob[2] - 1)
-        extra = 1 if kbirth > (1919, 9, 2) else 0
-        return attain_month(dob, 62, extra)
-
-    def summary_qcs(earn: dict[int, float]) -> tuple[int, int]:
-        """(qctottd, qctot51td) for line 95: four quarters for each year
-        with earnings, capped at the 1937-77 and 1951-77 maxima."""
-        pre51 = min(56, 4 * sum(1 for y, v in earn.items() if y < 1951 and v > 0))
-        p5177 = min(
-            108, 4 * sum(1 for y, v in earn.items() if 1951 <= y <= 1977 and v > 0)
-        )
-        return pre51 + p5177, p5177
-
     # Old-start / PIA-table cohorts: entitlement at 62, 65 and 68.
     for by in [1900, 1905, 1910, 1915, 1918, 1922, 1925, 1928]:
         dob = (by, 3, 15)
@@ -400,12 +404,177 @@ def hist_v1() -> list[CaseSpec]:
     return cases
 
 
+def special_v1() -> list[CaseSpec]:
+    """The methods the other sweeps never reach: the disability guarantee
+    (every conversion variant), the child-care dropout method, and long
+    low-earning careers where the special minimum can win."""
+    cases: list[CaseSpec] = []
+    n = 50000
+
+    # --- disability guarantee -------------------------------------------
+    # Each row is a prior period of disability that ceased, followed by a
+    # later entitlement. The variants cover DibGuar's five conversion
+    # types: whether the new entitlement is before or after January 1996,
+    # whether benefits were continuous within 12 months, and whether the
+    # prior eligibility was before 1979.
+    dg = [
+        # (label, birth, onset, dib_ent, cessation, later_kind, gap_months)
+        ("pre96-pre79", 1928, (1975, 6, 15), (1975, 12), (1985, 6), "oab", 1),
+        ("pre96-post78", 1928, (1980, 6, 15), (1980, 12), (1985, 6), "oab", 1),
+        ("pre96-gap", 1928, (1980, 6, 15), (1980, 12), (1985, 6), "oab", 48),
+        ("post95-oab", 1950, (1995, 6, 15), (1995, 12), (2005, 6), "oab", 1),
+        ("post95-oab-old", 1950, (1978, 6, 15), (1978, 12), (2005, 6),
+         "oab", 1),
+        ("post95-surv", 1950, (1995, 6, 15), (1995, 12), (2005, 6), "surv", 1),
+    ]
+    for label, by, onset, dib_ent, cess, kind, gap in dg:
+        dob = (by, 3, 15)
+        for pat in ["steady", "half"]:
+            earn = earnings_pattern(pat, by, onset[0] - 1)
+            if not earn:
+                continue
+            if kind == "oab":
+                ent = max(add_months(cess, gap), earliest_oab(dob))
+                fam: list = []
+                joasdi, death = 1, None
+            else:
+                ent = add_months(cess, gap)
+                death = (ent[0], ent[1], 20)
+                wby = by + 3
+                w60 = ((wby + 60) * 12 + (5 - 1) + 1)
+                went = max((w60 // 12, w60 % 12 + 1), (ent[0], ent[1]))
+                fam = [FamilyMemberSpec("D ", (wby, 6, 10), went)]
+                ent = went
+                joasdi = 2
+            for ben_label, bendate in (
+                ("ent", ent), ("+1y", add_months(ent, 12)),
+            ):
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1dg-{label}-{pat}-{ben_label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=joasdi,
+                    ent=None if joasdi == 2 else ent, bendate=bendate,
+                    death=death, earnings=earn, family=fam,
+                    onset=onset, waitper=add_months(onset[:2], 1),
+                    prior_ent=dib_ent, cessation=cess,
+                    cessation_pia=900.00, cessation_mfb=1350.00,
+                ))
+
+    # --- child-care dropout years ---------------------------------------
+    # The extra dropout is only available when the ordinary dropout has
+    # not already used up all three, which means a short working life:
+    # a worker disabled young.
+    for by in [1980, 1985, 1990]:
+        for onset_age in (26, 29, 32):
+            onset_year = by + onset_age
+            if onset_year > 2024:
+                continue
+            dob = (by, 3, 15)
+            first = by + 22
+            # earn in every year but the last three, which are child-care
+            # years with no earnings at all
+            earn = {}
+            care = []
+            for y in range(first, onset_year):
+                if y >= onset_year - 3:
+                    earn[y] = 0.0
+                    care.append(y)
+                else:
+                    earn[y] = round(AWI.get(y, 0.0), 2)
+            if len(earn) < 4 or not care:
+                continue
+            onset = (onset_year, 6, 15)
+            ent = (onset_year, 12)
+            for ben_label, bendate in (
+                ("ent", ent), ("+1y", add_months(ent, 12)),
+            ):
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1cc-{by}-o{onset_age}-{ben_label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=3,
+                    ent=ent, bendate=bendate, earnings=earn,
+                    onset=onset, waitper=(onset_year, 7),
+                    childcare_years=care,
+                ))
+
+    # --- long low-earning careers (special minimum) ----------------------
+    for by in [1940, 1950, 1955]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        ent = attain_month(dob, nra_y, nra_m)
+        for frac_label, frac in (("q", 0.25), ("t", 0.33), ("h", 0.5)):
+            earn = {
+                y: round(frac * AWI[y], 2)
+                for y in range(by + 22, ent[0])
+                if y in AWI
+            }
+            if not earn:
+                continue
+            for ben_label, bendate in (
+                ("ent", ent), ("+1y", add_months(ent, 12)),
+            ):
+                n += 1
+                cases.append(CaseSpec(
+                    case_id=f"x1sm-{by}-{frac_label}-{ben_label}",
+                    ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                    ent=ent, bendate=bendate, earnings=earn,
+                ))
+    return cases
+
+
+def total_v1() -> list[CaseSpec]:
+    """Totalization cases: too few US quarters to compute a PIA from
+    directly, so the PIA is built from an artificial earnings record and
+    then pro-rated by the share of the computation period covered."""
+    cases: list[CaseSpec] = []
+    n = 60000
+    for by in [1940, 1950, 1955, 1960]:
+        dob = (by, 3, 15)
+        nra_y, nra_m = NRA.get(by + 62, (67, 0))
+        # a short stretch of US work at various levels, then nothing
+        for span_label, start_age, span in (
+            ("short", 30, 3), ("mid", 35, 6), ("long", 25, 9),
+        ):
+            for frac_label, frac in (("h", 0.5), ("s", 1.0)):
+                first = by + start_age
+                earn = {
+                    y: round(frac * AWI[y], 2)
+                    for y in range(first, first + span)
+                    if y in AWI
+                }
+                if len(earn) < span:
+                    continue
+                # relEarnPositionCal reads the per-year quarter array,
+                # so a totalization case needs annual quarters rather
+                # than the line-95 lump
+                qcs = {y: 4 for y, v in earn.items() if v > 0 and y <= 1977}
+                for age_label, ent in (
+                    ("62", earliest_oab(dob)),
+                    ("nra", attain_month(dob, nra_y, nra_m)),
+                ):
+                    for ben_label, bendate in (
+                        ("ent", ent), ("+1y", add_months(ent, 12)),
+                    ):
+                        n += 1
+                        cases.append(CaseSpec(
+                            case_id=(f"t1-{by}-{span_label}-{frac_label}"
+                                     f"-e{age_label}-{ben_label}"),
+                            ssn=f"9{n:08d}", sex=n % 2, dob=dob, joasdi=1,
+                            ent=ent, bendate=bendate, earnings=earn,
+                            totalize=True,
+                            qcs_by_year=qcs if qcs else None,
+                        ))
+    return cases
+
+
 SWEEPS = {
     "retire_v1": retire_v1,
     "dib_v1": dib_v1,
     "surv_v1": surv_v1,
     "fam_v1": fam_v1,
     "hist_v1": hist_v1,
+    "special_v1": special_v1,
+    "total_v1": total_v1,
 }
 
 

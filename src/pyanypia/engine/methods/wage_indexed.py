@@ -74,6 +74,27 @@ def aimepia_cal(
     return round_benefit(total, year)
 
 
+def deconvert_ame(
+    ctx: CalcContext,
+    piasub: float,
+    bend_pia: tuple[float, float],
+    perc_pia: tuple[float, ...],
+) -> float:
+    """WageIndGeneral::deconvertAme — the AIME that would produce `piasub`
+    under the present-law two-bend-point formula. A totalization case
+    reports this rather than the AIME of the artificial record, since the
+    PIA it must correspond to has been pro-rated."""
+    temp1 = (perc_pia[0] - perc_pia[1]) * bend_pia[0]
+    temp2 = (perc_pia[1] - perc_pia[2]) * bend_pia[1]
+    if piasub < perc_pia[0] * bend_pia[0]:
+        rv = piasub / perc_pia[0]
+    elif piasub < temp1 + perc_pia[1] * bend_pia[1]:
+        rv = (piasub - temp1) / perc_pia[1]
+    else:
+        rv = (piasub - temp1 - temp2) / perc_pia[2]
+    return math.ceil(rv) if ctx.elig_year > 1982 else math.floor(rv)
+
+
 def windfall_perc(
     elig_year: int, benefit_year: int, spec_min_tot: int
 ) -> tuple[float, ...]:
@@ -133,8 +154,8 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
         MethodType.WAGE_IND_NON_FREEZE if non_freeze else MethodType.WAGE_IND
     )
     m = MethodState(mtype, applicable=Applicable.APPLICABLE)
-    earnings = ctx.earn_oasdi_limited
-    year1 = max(ctx.ibegin_all, 1951)
+    earnings = ctx.method_earnings()
+    year1 = ctx.earn50(with_totalization=True)
     year2 = ctx.earn_year
     year5 = ctx.elig_year_non_freeze if non_freeze else ctx.elig_year
     index_earnings(ctx, m, year1, year5 - 2, year2, earnings)
@@ -158,6 +179,10 @@ def calculate(ctx: CalcContext, *, non_freeze: bool = False) -> MethodState:
         ctx, m.pia_elig, year5, ctx.worker.benefit_date
     )
     bend_mfb = ctx.params.bend_points_mfb(year5)
+    if ctx.worker.totalize:
+        base.prorate(ctx, m)
+        m.ame_total = m.ame
+        m.ame = deconvert_ame(ctx, m.pia_elig[year4], bend_pia, perc_pia)
     portion_pia_elig = base.set_portion_pia_elig(m.pia_elig[year4], bend_mfb)
     m.mfb_elig[year4] = base.mfb_cal(portion_pia_elig, PERC_MFB, year4)
     m.mfb_ent = base.apply_colas(

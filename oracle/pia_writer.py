@@ -7,11 +7,15 @@ Field layouts follow oracle/vendor/oactobjs32/piadata/piaread.cpp exactly:
   04  benefit date mmyyyy(6)
   06  first(4) last(4) years of earnings
   09  disability period 1 (DisabPeriod.parseString layout)
+  10  disability period 2 (the earlier period, same layout)
   12  noncovered pension amount(10) [start mmyyyy(6)]
+  13  totalization indicator (1 digit, nonzero = totalization case)
   22+ OASDI earnings, 10 per line, 11 chars each, %11.2f
   40  assumptions: istart(4) ialtbi(1) ialtaw(1) ibasch(1)
   69+ family members: bic(2) dob(8) entitlement mmyyyy(6) [onset(8) if W]
   95  summary quarters of coverage: qctottd(3) 1937-77, qctot51td(3) 1951-77
+  96  annual quarters of coverage: one digit per year, first year to 1977
+  97  child-care years: one digit per year of earnings, 1 = child in care
 """
 
 from __future__ import annotations
@@ -44,8 +48,17 @@ class CaseSpec:
     cessation: tuple[int, int] | None = None
     cessation_pia: float = 0.0
     cessation_mfb: float = 0.0
+    # second (earlier) period of disability, written on line 10
+    onset2: tuple[int, int, int] | None = None
+    waitper2: tuple[int, int] | None = None
+    prior_ent2: tuple[int, int] | None = None
+    cessation2: tuple[int, int] | None = None
+    cessation2_pia: float = 0.0
+    cessation2_mfb: float = 0.0
+    childcare_years: list[int] = field(default_factory=list)
     pubpen: float | None = None
     pubpen_date: tuple[int, int] | None = None
+    totalize: bool = False
     family: list[FamilyMemberSpec] = field(default_factory=list)
     # summary quarters of coverage (line 95). qctottd covers 1937-1977 and
     # qctot51td covers 1951-1977, so their difference is the pre-1951 total
@@ -53,6 +66,11 @@ class CaseSpec:
     # from pre-1951 earnings, so old-start cases must state them.
     qctottd: int | None = None
     qctot51td: int = 0
+    # annual quarters of coverage (line 96), one entry per year from the
+    # first year of earnings through 1977. Supplying these instead of the
+    # line-95 lump is what totalization needs, because relEarnPositionCal
+    # reads the per-year array.
+    qcs_by_year: dict[int, int] | None = None
     istart: int = 2026
     ialtbi: int = 2
     ialtaw: int = 2
@@ -76,6 +94,10 @@ class CaseSpec:
             lines.append(f"04{mm:02d}{yy:04d}")
         if self.onset is not None:
             lines.append("09" + _disab_period(self))
+        if self.onset2 is not None:
+            lines.append("10" + _disab_period2(self))
+        if self.totalize:
+            lines.append("131")
         if self.pubpen is not None:
             s = f"12{self.pubpen:10.2f}"
             if self.pubpen_date is not None:
@@ -97,6 +119,22 @@ class CaseSpec:
         )
         if self.qctottd is not None:
             lines.append(f"95{self.qctottd:3d}{self.qctot51td:3d}")
+        if self.qcs_by_year is not None and self.earnings:
+            years = sorted(self.earnings)
+            last = min(years[-1], 1977)
+            if years[0] <= last:
+                digits = "".join(
+                    str(min(4, self.qcs_by_year.get(y, 0)))
+                    for y in range(years[0], last + 1)
+                )
+                lines.append(f"96{digits}")
+        if self.childcare_years and self.earnings:
+            years = sorted(self.earnings)
+            bits = "".join(
+                "1" if y in self.childcare_years else "0"
+                for y in range(years[0], years[-1] + 1)
+            )
+            lines.append(f"97{bits}")
         for i, fam in enumerate(self.family):
             fy, fm, fd = fam.dob
             ey2, em2 = fam.ent
@@ -132,4 +170,28 @@ def _disab_period(spec: CaseSpec) -> str:
     if spec.cessation is not None:
         cy, cm = spec.cessation
         s += f"{cm:02d}{cy:04d}{spec.cessation_pia:10.2f}{spec.cessation_mfb:10.2f}"
+    return s
+
+
+def _disab_period2(spec: CaseSpec) -> str:
+    """Line 10: the earlier of two periods of disability. It has always
+    ceased, so cessation date, PIA and MFB are always present."""
+    oy, om, od = spec.onset2  # type: ignore[misc]
+    s = f"{om:02d}{od:02d}{oy:04d}"
+    if spec.prior_ent2 is not None:
+        pey, pem = spec.prior_ent2
+        s += f"{pem:02d}{pey:04d}"
+    else:
+        s += "000000"
+    if spec.waitper2 is not None:
+        wy, wm = spec.waitper2
+        s += f"{wm:02d}{wy:04d}"
+    else:
+        s += "000000"
+    if spec.cessation2 is not None:
+        cy, cm = spec.cessation2
+        s += (
+            f"{cm:02d}{cy:04d}{spec.cessation2_pia:10.2f}"
+            f"{spec.cessation2_mfb:10.2f}"
+        )
     return s

@@ -84,6 +84,7 @@ class Worker:
     death_date: date | None = None
     earnings_hi: dict[int, float] = field(default_factory=dict)  # excess HI
     qcs_by_year: dict[int, int] = field(default_factory=dict)  # annual QCs
+    childcare_years: frozenset[int] = frozenset()  # years with child in care
     qc_total_to_date: int = 0  # lump QCs 1937 through 1977 (qctd)
     qc_total_51_to_date: int = 0  # lump QCs 1951 through 1977 (qc51td)
     disability_periods: tuple[DisabilityPeriod, ...] = ()
@@ -114,6 +115,10 @@ class Worker:
         if isinstance(self.disability_periods, list):
             object.__setattr__(
                 self, "disability_periods", tuple(self.disability_periods)
+            )
+        if not isinstance(self.childcare_years, frozenset):
+            object.__setattr__(
+                self, "childcare_years", frozenset(self.childcare_years)
             )
         self._check_summary_qcs()
 

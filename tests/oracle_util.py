@@ -63,6 +63,24 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
             cessation_pia=spec.get("cessation_pia", 0.0),
             cessation_mfb=spec.get("cessation_mfb", 0.0),
         ))
+    if spec.get("onset2"):
+        oy, om, od = spec["onset2"]
+        periods.append(DisabilityPeriod(
+            onset=date(oy, om, od),
+            first_entitlement=(
+                MonthYear(*spec["prior_ent2"])
+                if spec.get("prior_ent2") else None
+            ),
+            waiting_period_start=(
+                MonthYear(*spec["waitper2"]) if spec.get("waitper2") else None
+            ),
+            cessation=(
+                MonthYear(*spec["cessation2"])
+                if spec.get("cessation2") else None
+            ),
+            cessation_pia=spec.get("cessation2_pia", 0.0),
+            cessation_mfb=spec.get("cessation2_mfb", 0.0),
+        ))
     from pyanypia import FamilyMember
 
     family = []
@@ -92,6 +110,11 @@ def worker_from_spec(spec: dict[str, Any]):  # type: ignore[no-untyped-def]
         family=tuple(family),
         qc_total_to_date=spec.get("qctottd") or 0,
         qc_total_51_to_date=spec.get("qctot51td") or 0,
+        childcare_years=frozenset(spec.get("childcare_years") or ()),
+        totalize=bool(spec.get("totalize")),
+        qcs_by_year={
+            int(k): v for k, v in (spec.get("qcs_by_year") or {}).items()
+        },
     )
 
 

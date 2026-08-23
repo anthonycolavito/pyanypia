@@ -90,6 +90,9 @@ class MethodState:
     pia_windfall: float = 0.0
     cap: float = 0.0
     ind_cap: int = 0
+    pia_elig_total: float = 0.0  # PIA at eligibility before totalization
+    pia_total: float = 0.0  # PIA at entitlement before totalization
+    ame_total: float = 0.0  # AME before totalization
 
 
 def set_year_cpi(ctx: CalcContext, m: MethodState) -> None:
@@ -141,6 +144,20 @@ def apply_colas(
     ctx: CalcContext, pia77: dict[int, float], year1: int, date2: MonthYear
 ) -> float:
     return apply_colas_elig(ctx, pia77, year1, date2, year1)
+
+
+def prorate(ctx: CalcContext, m: MethodState) -> None:
+    """PiaMethod::prorate — a totalization PIA is pro-rated by the share of
+    the computation period actually covered by US quarters."""
+    assert ctx.worker.benefit_date is not None
+    m.pia_elig_total = m.pia_elig.get(m.year_first, 0.0)
+    m.pia_total = m.pia_ent
+    factor = ctx.qc_total_rel / float(4 * ctx.comp_period_new.n)
+    m.pia_ent = round_benefit(factor * m.pia_ent, m.year_ben)
+    num_years = m.year_ben - m.year_first
+    m.pia_elig[m.year_first] = ctx.params.deconvert_pia(
+        ctx.elig_year, num_years, m.pia_ent, ctx.worker.benefit_date
+    )
 
 
 def order_earnings(m: MethodState, first: int, last: int, number: int) -> None:

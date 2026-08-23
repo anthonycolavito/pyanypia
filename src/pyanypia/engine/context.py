@@ -16,6 +16,7 @@ from pyanypia.worker import Worker
 YEAR36 = 1936
 YEAR37 = 1937
 YEAR50 = 1950
+YEAR51 = 1951
 
 
 @dataclass
@@ -80,6 +81,17 @@ class CalcContext:
     earn_hi: dict[int, float] = field(default_factory=dict)
     earn_hi_limited: dict[int, float] = field(default_factory=dict)
     earn_total50: float = 0.0  # regular pre-1951 total
+
+    # totalization: an artificial earnings record built from the worker's
+    # relative earnings position in their covered years
+    ibegin_total: int = 0
+    iend_total: int = 0
+    earn_totalized: dict[int, float] = field(default_factory=dict)
+    earn_totalized_limited: dict[int, float] = field(default_factory=dict)
+    earn_total50_totalized: float = 0.0
+    rel_earn_position: dict[int, float] = field(default_factory=dict)
+    rel_earn_position_average: float = 0.0
+    qc_total_rel: int = 0
 
     # quarters of coverage
     qcov: dict[int, int] = field(default_factory=dict)
@@ -180,5 +192,22 @@ class CalcContext:
             )
         return start
 
-    def get_earn_total50(self) -> float:
+    def get_earn_total50(self, with_totalization: bool = False) -> float:
+        """PiaData::getEarnTotal50 — the pre-1951 earnings total, from the
+        real record or the totalized one."""
+        if with_totalization:
+            return self.earn_total50_totalized
         return self.earn_total50
+
+    def method_earnings(self) -> dict[int, float]:
+        """The earnings a PIA method computes from: the totalized record
+        for a totalization case, otherwise the real one."""
+        if self.worker.totalize:
+            return self.earn_totalized_limited
+        return self.earn_oasdi_limited
+
+    def earn50(self, with_totalization: bool = False) -> int:
+        """PiaData::getEarn50 — first year of post-1950 earnings."""
+        if with_totalization and self.worker.totalize:
+            return max(self.ibegin_total, YEAR51)
+        return max(self.ibegin_all, YEAR51)
