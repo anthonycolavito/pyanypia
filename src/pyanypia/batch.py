@@ -39,6 +39,11 @@ def compute_many(
     ``processes`` defaults to one per CPU, capped by the work available;
     pass 1 to stay in this process. Results do not depend on how the work
     was divided.
+
+    Parallel work is started with the "spawn" method, so a script calling
+    this needs its entry point under ``if __name__ == "__main__":`` --
+    without it each child re-imports the script and starts children of
+    its own.
     """
     items = list(workers)
     if not items:
@@ -52,7 +57,7 @@ def compute_many(
         chunksize = max(1, len(items) // (n_proc * 4))
     ctx = multiprocessing.get_context("spawn")
     with ctx.Pool(
-        processes=n_proc, initializer=_init_worker, initargs=(alt,)
+        processes=n_proc, initializer=_init_worker, initargs=(params,)
     ) as pool:
         return pool.map(_compute_in_pool, items, chunksize=chunksize)
 
@@ -86,14 +91,20 @@ def _compute_one(worker: Worker, params: Params) -> Results:
     return results_from_context(calculate(worker, params))
 
 
-# Pool workers build the parameter set once, then reuse it: assembling
-# it is far more expensive than one case.
+# Pool workers are handed the parameter set once and reuse it, rather
+# than it travelling with every case: it is far larger than a worker and
+# far more expensive to assemble than one case is to compute.
+#
+# It has to be the caller's own set, not one rebuilt from `alt`. Rebuilding
+# it lost any reform the caller passed, so a batch of 200 quietly answered
+# under present law while the same batch of 199, which never left this
+# process, answered under the reform.
 _POOL_PARAMS: Params | None = None
 
 
-def _init_worker(alt: int) -> None:  # pragma: no cover - subprocess only
+def _init_worker(params: Params) -> None:  # pragma: no cover - subprocess
     global _POOL_PARAMS
-    _POOL_PARAMS = present_law(alt)
+    _POOL_PARAMS = params
 
 
 def _compute_in_pool(worker: Worker) -> Results:  # pragma: no cover

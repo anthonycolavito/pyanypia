@@ -74,6 +74,33 @@ def test_thousand_workers_deterministic_across_processes() -> None:
         assert a.method == b.method
 
 
+@pytest.mark.slow
+def test_a_reform_survives_the_process_boundary() -> None:
+    """A reform must reach the pool workers.
+
+    They used to rebuild the parameter set from `alt`, which threw the
+    caller's reform away: a batch big enough to parallelise answered
+    under present law while the same batch one worker smaller, which
+    never left this process, answered under the reform. Both sizes here
+    straddle MIN_PARALLEL for that reason.
+    """
+    from pyanypia.batch import MIN_PARALLEL
+    from pyanypia.law import NraChange, Reform, reformed_params
+
+    params = reformed_params(Reform(nra=NraChange(1990, 2100, variant=1)))
+    baseline = compute_many(make_workers(1), processes=1)[0]
+
+    for n in (MIN_PARALLEL - 1, MIN_PARALLEL):
+        got = compute_many(make_workers(n), params=params)
+        assert len(got) == n
+        assert got[0].monthly_benefit != baseline.monthly_benefit, (
+            f"{n} workers: the reform did not reach the computation"
+        )
+        assert got[0].monthly_benefit == compute_many(
+            make_workers(1), params=params, processes=1
+        )[0].monthly_benefit
+
+
 def test_wide_frame_round_trip() -> None:
     pd = pytest.importorskip("pandas", reason="pandas extra not installed")
 
