@@ -91,139 +91,107 @@ class CaseSpec:
     ialtaw: int = 2
     ibasch: int = 1
 
-    def to_pia(self) -> str:
-        lines: list[str] = []
-        by, bm, bd = self.dob
-        lines.append(f"01{self.ssn}{self.sex}{bm:02d}{bd:02d}{by:04d}")
-        if self.death is not None:
-            dy, dm, dd = self.death
-            lines.append(f"02{dm:02d}{dd:02d}{dy:04d}")
-        ey, em = self.ent if self.ent is not None else (0, 0)
-        if self.joasdi == 2:
-            # survivor: entitlement on line 03 is ignored; still emit type
-            lines.append(f"03{self.joasdi}{em:02d}{ey:04d}")
-        else:
-            lines.append(f"03{self.joasdi}{em:02d}{ey:04d}")
-        if self.bendate is not None:
-            yy, mm = self.bendate
-            lines.append(f"04{mm:02d}{yy:04d}")
+    def to_worker(self):  # type: ignore[no-untyped-def]
+        """The pyanypia Worker this case describes."""
+        from datetime import date as _date
+
+        from pyanypia import (
+            BenefitType,
+            DisabilityPeriod,
+            FamilyMember,
+            MonthYear,
+            Worker,
+        )
+        from pyanypia.worker import EarningsProjection, MilitaryService
+
+        def moyr(v):  # type: ignore[no-untyped-def]
+            return MonthYear(*v) if v else None
+
+        periods = []
         if self.onset is not None:
-            lines.append("09" + _disab_period(self))
+            prior = self.prior_ent
+            if prior is None and self.joasdi == 3:
+                prior = self.ent
+            periods.append(DisabilityPeriod(
+                onset=_date(*self.onset),
+                first_entitlement=moyr(prior),
+                waiting_period_start=moyr(self.waitper),
+                cessation=moyr(self.cessation),
+                cessation_pia=self.cessation_pia,
+                cessation_mfb=self.cessation_mfb,
+            ))
         if self.onset2 is not None:
-            lines.append("10" + _disab_period2(self))
-        if self.totalize:
-            lines.append("131")
-        if self.pubpen is not None:
-            s = f"12{self.pubpen:10.2f}"
-            if self.pubpen_date is not None:
-                py, pm = self.pubpen_date
-                s += f"{pm:02d}{py:04d}"
-            lines.append(s)
+            periods.append(DisabilityPeriod(
+                onset=_date(*self.onset2),
+                first_entitlement=moyr(self.prior_ent2),
+                waiting_period_start=moyr(self.waitper2),
+                cessation=moyr(self.cessation2),
+                cessation_pia=self.cessation2_pia,
+                cessation_mfb=self.cessation2_mfb,
+            ))
+        entered = sorted(self.earnings)
+        projection = None
+        if self.proj_back or self.proj_fwrd or self.earn_types:
+            projection = EarningsProjection(
+                proj_back=self.proj_back,
+                perc_back=self.perc_back,
+                first_year=entered[0] if entered else 0,
+                proj_fwrd=self.proj_fwrd,
+                perc_fwrd=self.perc_fwrd,
+                last_year=entered[-1] if entered else 0,
+                earn_types=dict(self.earn_types),
+            )
+        span = self.earnings_span
+        if span is None and entered:
+            span = (entered[0], entered[-1])
+        return Worker(
+            dob=_date(*self.dob),
+            sex=self.sex,
+            benefit_type=BenefitType(self.joasdi),
+            earnings=dict(self.earnings),
+            earnings_span=span,
+            projection=projection,
+            military_service=tuple(
+                MilitaryService(MonthYear(*s), MonthYear(*e))
+                for s, e in self.military
+            ),
+            entitlement=moyr(self.ent),
+            benefit_date=moyr(self.bendate),
+            death_date=_date(*self.death) if self.death else None,
+            qcs_by_year=dict(self.qcs_by_year or {}),
+            childcare_years=frozenset(self.childcare_years),
+            qc_total_to_date=self.qctottd or 0,
+            qc_total_51_to_date=self.qctot51td,
+            disability_periods=tuple(periods),
+            noncovered_pension=self.pubpen or 0.0,
+            noncovered_pension_date=moyr(self.pubpen_date),
+            totalize=self.totalize,
+            family=tuple(
+                FamilyMember(
+                    bic=f.bic,
+                    dob=_date(*f.dob),
+                    entitlement=MonthYear(*f.ent),
+                    disability_onset=_date(*f.onset) if f.onset else None,
+                )
+                for f in self.family
+            ),
+        )
+
+    def to_pia(self) -> str:
+        """Renders the case with the package's own .pia writer, so the
+        oracle inputs and the shipped writer cannot drift apart."""
+        from pyanypia.io import PiaCase, write_case
+        from pyanypia.io.pia_file import AssumptionSpec
+
         if self.earnings:
             years = sorted(self.earnings)
-            first, last = years[0], years[-1]
-            if set(years) != set(range(first, last + 1)):
+            if set(years) != set(range(years[0], years[-1] + 1)):
                 raise ValueError("earnings years must be contiguous (use 0.0)")
-            ib, ie = self.earnings_span or (first, last)
-            lines.append(f"06{ib:04d}{ie:04d}")
-            # 07/08 must follow 06, which resets the entered span
-            if self.proj_back:
-                lines.append(f"07{self.proj_back}{self.perc_back:6.2f}{first:4d}")
-            if self.proj_fwrd:
-                lines.append(f"08{self.proj_fwrd}{self.perc_fwrd:6.2f}{last:4d}")
-            if self.military:
-                periods = "".join(
-                    f"{sm:02d}{sy:04d}{em:02d}{ey:04d}"
-                    for (sy, sm), (ey, em) in self.military
-                )
-                lines.append(f"11{periods}")
-            if self.earn_types:
-                digits = "".join(
-                    str(self.earn_types.get(y, 0))
-                    for y in range(first, last + 1)
-                )
-                lines.append(f"20{digits}")
-            for block, start in enumerate(range(first, last + 1, 10)):
-                chunk = range(start, min(start + 10, last + 1))
-                row = "".join(f"{self.earnings[y]:11.2f}" for y in chunk)
-                lines.append(f"{22 + block:02d}{row}")
-        lines.append(
-            f"40{self.istart:04d}{self.ialtbi}{self.ialtaw}{self.ibasch}"
-        )
-        if self.qctottd is not None:
-            lines.append(f"95{self.qctottd:3d}{self.qctot51td:3d}")
-        if self.earnings:
-            years = sorted(self.earnings)
-            ib, ie = self.earnings_span or (years[0], years[-1])
-            if self.qcs_by_year is not None and ib <= min(ie, 1977):
-                digits = "".join(
-                    str(min(4, self.qcs_by_year.get(y, 0)))
-                    for y in range(ib, min(ie, 1977) + 1)
-                )
-                lines.append(f"96{digits}")
-            if self.childcare_years:
-                bits = "".join(
-                    "1" if y in self.childcare_years else "0"
-                    for y in range(ib, ie + 1)
-                )
-                lines.append(f"97{bits}")
-        for i, fam in enumerate(self.family):
-            fy, fm, fd = fam.dob
-            ey2, em2 = fam.ent
-            s = f"{69 + i:02d}{fam.bic:<2s}{fm:02d}{fd:02d}{fy:04d}{em2:02d}{ey2:04d}"
-            if fam.onset is not None:
-                oy, om, od = fam.onset
-                s += f"{om:02d}{od:02d}{oy:04d}"
-            lines.append(s)
-        return "\n".join(lines) + "\n"
-
-
-def _disab_period(spec: CaseSpec) -> str:
-    """Line 09 layout per DisabPeriod::parseString: onset mmddyyyy,
-    prior entitlement mmyyyy, waiting period mmyyyy, then (for non-DI or
-    ceased) cessation mmyyyy + pia + mfb."""
-    oy, om, od = spec.onset  # type: ignore[misc]
-    s = f"{om:02d}{od:02d}{oy:04d}"
-    # for a current DIB, the period's entitlement is the DIB's own
-    # entitlement date (piawrite writes it; piaread checks it)
-    prior = spec.prior_ent
-    if prior is None and spec.joasdi == 3:
-        prior = spec.ent
-    if prior is not None:
-        pey, pem = prior
-        s += f"{pem:02d}{pey:04d}"
-    else:
-        s += "000000"
-    if spec.waitper is not None:
-        wy, wm = spec.waitper
-        s += f"{wm:02d}{wy:04d}"
-    else:
-        s += "000000"
-    if spec.cessation is not None:
-        cy, cm = spec.cessation
-        s += f"{cm:02d}{cy:04d}{spec.cessation_pia:10.2f}{spec.cessation_mfb:10.2f}"
-    return s
-
-
-def _disab_period2(spec: CaseSpec) -> str:
-    """Line 10: the earlier of two periods of disability. It has always
-    ceased, so cessation date, PIA and MFB are always present."""
-    oy, om, od = spec.onset2  # type: ignore[misc]
-    s = f"{om:02d}{od:02d}{oy:04d}"
-    if spec.prior_ent2 is not None:
-        pey, pem = spec.prior_ent2
-        s += f"{pem:02d}{pey:04d}"
-    else:
-        s += "000000"
-    if spec.waitper2 is not None:
-        wy, wm = spec.waitper2
-        s += f"{wm:02d}{wy:04d}"
-    else:
-        s += "000000"
-    if spec.cessation2 is not None:
-        cy, cm = spec.cessation2
-        s += (
-            f"{cm:02d}{cy:04d}{spec.cessation2_pia:10.2f}"
-            f"{spec.cessation2_mfb:10.2f}"
-        )
-    return s
+        return write_case(PiaCase(
+            worker=self.to_worker(),
+            assumptions=AssumptionSpec(
+                istart=self.istart, ialtbi=self.ialtbi,
+                ialtaw=self.ialtaw, ibasch=self.ibasch,
+            ),
+            ssn=self.ssn,
+        ))
