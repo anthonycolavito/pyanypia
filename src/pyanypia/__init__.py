@@ -36,6 +36,7 @@ from pyanypia.family import Auxiliary, FamilyBenefits, family_benefits
 from pyanypia.formula import apply_colas, bend_points, family_max, family_max_bend_points, pia
 from pyanypia.minimum import special_minimum_pia
 from pyanypia.policy import CURRENT_LAW, Policy
+from pyanypia.wep import gpo_offset, wep_pia
 
 __version__ = "0.3.0"
 
@@ -77,4 +78,6 @@ __all__ = [
     "deceased_worker",
     "family_benefits",
     "widow_guarantee_pia",
+    "gpo_offset",
+    "wep_pia",
 ]
