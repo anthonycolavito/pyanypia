@@ -23,6 +23,7 @@ from pyanypia.earnings import (
     quarters_of_coverage,
     years_of_coverage,
 )
+from pyanypia.formula import apply_colas, bend_points, family_max, family_max_bend_points, pia
 from pyanypia.policy import CURRENT_LAW, Policy
 
 __version__ = "0.3.0"
@@ -48,4 +49,9 @@ __all__ = [
     "indexed_earnings",
     "quarters_of_coverage",
     "years_of_coverage",
+    "apply_colas",
+    "bend_points",
+    "family_max",
+    "family_max_bend_points",
+    "pia",
 ]
