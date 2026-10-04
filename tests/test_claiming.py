@@ -32,7 +32,7 @@ def test_nra_matches_engine():
 
 
 def test_earliest_claim_age():
-    assert claiming.earliest_claim_age(np.array([1, 2, 3, 15])).tolist() == [744, 744, 745, 745]
+    assert claiming.earliest_claim_age(np.array([1, 2, 3, 15])).tolist() == [745, 744, 745, 745]
 
 
 def test_factors_match_engine():

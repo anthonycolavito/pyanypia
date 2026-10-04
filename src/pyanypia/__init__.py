@@ -12,6 +12,7 @@ from pyanypia.claiming import (
     normal_retirement_age,
     spouse_reduction_factor,
 )
+from pyanypia.convenience import Benefit, retired_worker
 from pyanypia.dates import adjusted_birth, cola_year
 from pyanypia.earnings import (
     aime,
@@ -24,6 +25,7 @@ from pyanypia.earnings import (
     years_of_coverage,
 )
 from pyanypia.formula import apply_colas, bend_points, family_max, family_max_bend_points, pia
+from pyanypia.minimum import special_minimum_pia
 from pyanypia.policy import CURRENT_LAW, Policy
 
 __version__ = "0.3.0"
@@ -54,4 +56,7 @@ __all__ = [
     "family_max",
     "family_max_bend_points",
     "pia",
+    "Benefit",
+    "retired_worker",
+    "special_minimum_pia",
 ]

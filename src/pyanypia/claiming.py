@@ -43,10 +43,13 @@ def normal_retirement_age(
 
 
 def earliest_claim_age(birth_day: ArrayLike = 15) -> Any:
-    """Earliest retirement claim, in months: 62 for those born on the 1st or
-    2nd, who are 62 for the whole of their birthday month; otherwise 62 and 1."""
+    """Earliest retirement claim, in months from the adjusted birth month:
+    62 and 1 month, except 62 for those born on the 2nd, who are 62 for the
+    whole of their birthday month (PiaParams::earlyAgeOabCalPL). Someone born
+    on the 1st is also 62 all month, but their adjusted birth month is the
+    month before, so they too count 62 and 1 month from it."""
     bd = as_int("birth_day", birth_day)
-    return out(np.where(bd <= 2, 744, 745))
+    return out(np.where(bd == 2, 744, 745))
 
 
 def early_reduction_factor(months: ArrayLike, *, policy: Policy = CURRENT_LAW) -> np.ndarray:
