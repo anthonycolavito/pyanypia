@@ -26,12 +26,13 @@ def special_minimum_pia(
     pia_t, mfb_t, pia01, mfb01 = policy.spec_min_tables
     excess = np.clip(yoc - 10, 0, 20)
     before_increase = bm < np.where(by >= 1983, 12, 6)
-    # August-November 2001 pay the December 2000 amounts with the 1999 correction
-    aug2001 = before_increase & (by == 2001) & (bm >= 8)
+    # From July 2001 (amend01) the December 2000 amounts carry the 1999
+    # correction (PiaParamsLC::getSpecMinPia and getSpecMinMfb)
+    corrected = before_increase & (by == 2001) & (bm >= 7)
     year = np.where(before_increase, by - 1, by)
     row = np.maximum(excess - 1, 0)
     col = np.clip(year - FIRST_YEAR, 0, pia_t.shape[1] - 1)
-    pia = np.where(aug2001, pia01[row], pia_t[row, col])
-    mfb = np.where(aug2001, mfb01[row], mfb_t[row, col])
+    pia = np.where(corrected, pia01[row], pia_t[row, col])
+    mfb = np.where(corrected, mfb01[row], mfb_t[row, col])
     has = excess > 0
     return out(np.where(has, pia, 0.0)), out(np.where(has, mfb, 0.0))

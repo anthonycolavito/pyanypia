@@ -75,6 +75,18 @@ def test_default_entitlement_follows_waiting_period():
 
 
 @pytest.mark.slow
+def test_childcare_vs_engine_large():
+    # includes non-freeze winners whose AIME is not the highest, which take
+    # the family maximum of the highest-AIME method (cases 169, 762, 949)
+    _sweep(disabled_cases(np.random.default_rng(12), 2500, childcare=True))
+
+
+def test_nonfreeze_winner_takes_highest_aime_maximum():
+    cases = disabled_cases(np.random.default_rng(12), 2500, childcare=True)
+    _sweep([cases[i] for i in (169, 762, 949)])
+
+
+@pytest.mark.slow
 def test_disabled_vs_engine_large():
     _sweep(disabled_cases(np.random.default_rng(11), 5000))
 

@@ -4,6 +4,21 @@ All notable changes to pyanypia are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-10-04
+
+Two fixes found by running the test sweeps through SSA's own C++
+calculator (built from the published source), which now agrees with
+pyanypia on every one of about 16,000 workers and 9,000 family members.
+
+### Fixed
+
+- `disabled_worker`: when the non-freeze computation wins on PIA but
+  another computation has the higher AIME, the family maximum is that
+  method's, as AnyPIA gives every method but the ordinary and child-care
+  ones (PiaCal::piaCal1).
+- `special_minimum_pia`: benefits paid in July 2001 use the amounts with
+  the corrected 1999 COLA (from July, not August).
+
 ## [0.3.0] — 2026-10-04
 
 **Breaking: pyanypia is now a library of benefit-formula functions.** The

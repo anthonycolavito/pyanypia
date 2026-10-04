@@ -38,7 +38,7 @@ from pyanypia.minimum import special_minimum_pia
 from pyanypia.policy import CURRENT_LAW, Policy
 from pyanypia.wep import gpo_offset, wep_pia
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "CURRENT_LAW",

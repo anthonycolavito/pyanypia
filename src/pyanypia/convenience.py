@@ -268,8 +268,10 @@ def disabled_worker(
         high = np.where(better, pias[k], high)
         winner = np.where(better, k, winner)
         sm_wins = sm_wins & ~better
-    # PiaCal::piaCal1: each method's DI maximum, never below the highest PIA;
-    # a special-minimum winner takes the one of the method with the highest AIME
+    # PiaCal::piaCal1: each method's DI maximum, never below the highest PIA.
+    # The ordinary and child-care computations keep their own; every other
+    # method (the special minimum, the non-freeze computation) is given the
+    # one of the method with the highest AIME.
     mfbs = [np.maximum(np.asarray(formula.apply_colas(
         disability.di_family_max(p, a, e, policy=policy), e, ben_y, ben_m, policy=policy)),
         high) for e, a, p in methods]
@@ -278,7 +280,9 @@ def disabled_worker(
         higher = methods[k][1] > top_aime
         top_aime = np.where(higher, methods[k][1], top_aime)
         top = np.where(higher, k, top)
-    mfb = np.where(sm_wins, _pick(mfbs, top), _pick(mfbs, winner))
+    nonfreeze = len(methods) - 1
+    takes_top = sm_wins | (winner == nonfreeze)
+    mfb = np.where(takes_top, _pick(mfbs, top), _pick(mfbs, winner))
     nra = np.asarray(claiming.normal_retirement_age(by, bm, birth_day=bd, policy=policy))
     unrounded = round_benefit(1.0 * high, cola_year(ben_y, ben_m))
     return _benefit(

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyanypia"
-version = "0.3.0"
+version = "0.3.1"
 description = "Vectorized Social Security benefit-formula functions, penny-exact with SSA's AnyPIA (2026 TR)"
 readme = "README.md"
 license = "MIT"
@@ -39,7 +39,7 @@ dev = [
     "pytest>=8",
     "ruff==0.16.*",
     "mypy==2.3.*",
-    "anypia-engine @ git+https://github.com/anthonycolavito/anypia-engine@v0.2.0",
+    "anypia-engine @ git+https://github.com/anthonycolavito/anypia-engine@v0.2.1",
 ]
 
 [tool.hatch.metadata]
