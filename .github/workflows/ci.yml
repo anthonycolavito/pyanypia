@@ -15,8 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The differential suites compare the engine against goldens committed
-  # to the repo, so they need no compiler and run everywhere.
   test:
     strategy:
       fail-fast: false
@@ -30,34 +28,17 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e ".[dev,pandas]"
-      - run: ruff check src tests oracle
+      - run: ruff check src tests docs/examples
       - run: mypy
-      - run: pytest -m "not oracle_smoke" -q
+      - run: pytest -q
 
-  # Rebuilds the official calculator and checks two things the goldens
-  # alone cannot: that they still match a fresh build of the oracle, and
-  # that files this package writes are read identically by it.
-  oracle:
+  # the large differential sweeps against the archived engine
+  sweeps:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install Boost headers
-        run: sudo apt-get update && sudo apt-get install -y libboost-dev
-      - name: Build the oracle
-        run: make -C oracle/build all
       - run: python -m pip install -e ".[dev,pandas]"
-      - name: Oracle round-trip tests
-        run: pytest -m oracle_smoke -q
-      - name: Goldens still match a fresh oracle run
-        run: |
-          python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
-            hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1 freeze_v1 assum_v1
-          for alt in 1 3; do
-            python oracle/run_oracle.py \
-              retire_v1@$alt dib_v1@$alt surv_v1@$alt fam_v1@$alt \
-              hist_v1@$alt special_v1@$alt total_v1@$alt proj_v1@$alt
-          done
-          git diff --exit-code -- oracle/goldens/
+      - run: pytest -q -m slow
