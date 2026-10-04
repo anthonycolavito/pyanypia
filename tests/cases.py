@@ -83,3 +83,30 @@ def as_matrix(cases: list[Case]) -> tuple[np.ndarray, int]:
 
 def column(cases: list[Case], f) -> np.ndarray:  # type: ignore[no-untyped-def]
     return np.array([f(c) for c in cases])
+
+
+def disabled_cases(
+    rng: np.random.Generator, n: int, childcare: bool = False
+) -> list[Case]:
+    cases: list[Case] = []
+    while len(cases) < n:
+        by, bm = int(rng.integers(1935, 2000)), int(rng.integers(1, 13))
+        oy = by + int(rng.integers(24, 61))
+        if not 1985 <= oy <= 2060:
+            continue
+        om, od = int(rng.integers(1, 13)), int(rng.choice([1, 5, 15, 28]))
+        waiting = 12 * oy + om - 1 + (0 if od == 1 else 1)
+        ent = waiting + 5
+        if ent >= 12 * (by + 62) + bm - 1:  # past 62: keep to pure disability cases
+            continue
+        ben = ent + int(rng.choice([0, 0, 12]))
+        earn = career(rng, by, oy)
+        extra: dict[str, object] = {"onset": (oy, om, od), "waiting": waiting, "ent": ent,
+                                    "ben": ben}
+        if childcare:
+            yrs = [y for y in earn if rng.random() < 0.3]
+            for y in yrs:
+                earn[y] = 0.0
+            extra["childcare"] = frozenset(yrs)
+        cases.append(Case((by, bm, 15), earn, extra=extra))
+    return cases

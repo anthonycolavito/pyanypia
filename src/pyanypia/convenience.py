@@ -142,3 +142,81 @@ def retired_worker(
         factor=np.broadcast_to(factor, (n,)), benefit=floor_dollar(unrounded),
         method=np.where(sm_wins, "special_minimum", "wage_indexed"),
         insured=insured)
+
+
+def disabled_worker(
+    earnings: Any, birth_year: ArrayLike, birth_month: ArrayLike, onset_year: ArrayLike,
+    onset_month: ArrayLike, *, first_year: int | None = None, birth_day: ArrayLike = 15,
+    onset_day: ArrayLike = 15, entitlement: tuple[ArrayLike, ArrayLike] | None = None,
+    benefit: tuple[ArrayLike, ArrayLike] | None = None, childcare: ArrayLike | None = None,
+    policy: Policy = CURRENT_LAW,
+) -> Benefit:
+    """A disabled worker's benefit, with no prior retirement benefit.
+
+    `entitlement` and `benefit` are (year, month) pairs. Entitlement defaults
+    to the end of the five-month waiting period, which starts with the first
+    full month of disability; the benefit month defaults to entitlement.
+    Earnings after the onset year are ignored (they fall in the disability
+    freeze). `childcare` flags years with a child under 3 in care, shaped
+    like the earnings, for the child-care dropout years.
+
+    `insured` is not evaluated for disabled workers (always True): the
+    disability insured-status test is outside this library. Nor is the
+    "non-freeze" computation AnyPIA also tries when the waiting period starts
+    in a later year than onset; it occasionally pays a little more.
+    """
+    from pyanypia import disability
+
+    m, first, single = as_earnings(earnings, first_year)
+    n = m.shape[0]
+    by, bm, bd = (_rows(birth_year, "birth_year", n), _rows(birth_month, "birth_month", n),
+                  _rows(birth_day, "birth_day", n))
+    oy, om, od = (_rows(onset_year, "onset_year", n), _rows(onset_month, "onset_month", n),
+                  _rows(onset_day, "onset_day", n))
+    if entitlement is None:
+        waiting_starts = month_index(oy, om) + np.where(od == 1, 0, 1)
+        ey, em = from_month_index(waiting_starts + 5)
+    else:
+        ey = _rows(entitlement[0], "entitlement_year", n)
+        em = _rows(entitlement[1], "entitlement_month", n)
+    if benefit is None:
+        ben_y, ben_m = ey, em
+    else:
+        ben_y, ben_m = _rows(benefit[0], "benefit_year", n), _rows(benefit[1], "benefit_month", n)
+    from pyanypia._arrays import check
+
+    check("entitlement", month_index(ey, em) < month_index(1980, 7), "before July 1980")
+    check("benefit", month_index(ben_y, ben_m) < month_index(ey, em), "before entitlement")
+    ky, _ = adjusted_birth(by, bm, bd)
+    elig = np.minimum(ky + 62, oy)
+    jan1 = (om == 1) & (od == 1)
+    last_year = np.minimum(ben_y - 1, np.where(jan1, oy - 1, oy))
+    comp = np.asarray(_earn.computation_years(by, bm, elig, birth_day=bd, disabled=True))
+    aime = np.asarray(_earn.aime(m, elig, comp, first_year=first, last_year=last_year,
+                                 policy=policy))
+    pia_elig = np.asarray(formula.pia(aime, elig, policy=policy))
+    if childcare is not None:
+        elapsed = _earn.elapsed_years(by, bm, elig, birth_day=bd)
+        cc_aime = np.asarray(disability.childcare_aime(
+            m, elig, comp, elapsed - comp, childcare, first_year=first, last_year=last_year,
+            through_year=ben_y - 1, policy=policy))
+        cc_pia = np.asarray(formula.pia(cc_aime, elig, policy=policy))
+        use_cc = cc_pia > pia_elig
+        aime = np.where(use_cc, cc_aime, aime)
+        pia_elig = np.where(use_cc, cc_pia, pia_elig)
+    mfb_elig = np.asarray(disability.di_family_max(pia_elig, aime, elig, policy=policy))
+    wage_pia = np.asarray(formula.apply_colas(pia_elig, elig, ben_y, ben_m, policy=policy))
+    di_mfb = np.asarray(formula.apply_colas(mfb_elig, elig, ben_y, ben_m, policy=policy))
+    sm_pia, _ = _special_minimum(m, first, last_year, ben_y, ben_m, policy)
+    sm_wins = sm_pia > wage_pia
+    pia = np.where(sm_wins, sm_pia, wage_pia)
+    # PiaCal::piaCal1: the DI maximum, never below the highest PIA, applies
+    # whichever method wins
+    mfb = np.maximum(di_mfb, pia)
+    nra = np.asarray(claiming.normal_retirement_age(by, bm, birth_day=bd, policy=policy))
+    unrounded = round_benefit(1.0 * pia, cola_year(ben_y, ben_m))
+    return _benefit(
+        single, elig_year=elig, aime=aime, pia_elig=pia_elig, pia=pia, mfb=mfb, nra=nra,
+        factor=np.ones(n), benefit=floor_dollar(unrounded),
+        method=np.where(sm_wins, "special_minimum", "wage_indexed"),
+        insured=np.ones(n, dtype=bool))

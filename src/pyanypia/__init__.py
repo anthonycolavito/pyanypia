@@ -12,8 +12,9 @@ from pyanypia.claiming import (
     normal_retirement_age,
     spouse_reduction_factor,
 )
-from pyanypia.convenience import Benefit, retired_worker
+from pyanypia.convenience import Benefit, disabled_worker, retired_worker
 from pyanypia.dates import adjusted_birth, cola_year
+from pyanypia.disability import childcare_aime, di_family_max
 from pyanypia.earnings import (
     aime,
     capped_earnings,
@@ -59,4 +60,7 @@ __all__ = [
     "Benefit",
     "retired_worker",
     "special_minimum_pia",
+    "childcare_aime",
+    "di_family_max",
+    "disabled_worker",
 ]

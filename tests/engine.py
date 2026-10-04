@@ -33,3 +33,20 @@ def run_retired(case: Case, alt: int = 2, **worker_kw: Any) -> eng.Results:
         qc_total_to_date=lump, qc_total_51_to_date=lump, **worker_kw,
     )
     return eng.compute(w, params=present_law(alt))
+
+
+def run_disabled(case: Case, alt: int = 2) -> eng.Results:
+    ex = case.extra
+    oy, om, od = ex["onset"]  # type: ignore[misc]
+    ent = month(ex["ent"])  # type: ignore[arg-type]
+    lump = qc_lumps(case.earnings)
+    w = eng.Worker(
+        dob=date(*case.birth), sex=eng.Sex.MALE, benefit_type=eng.BenefitType.DISABILITY,
+        earnings=case.earnings, entitlement=ent, benefit_date=month(ex["ben"]),  # type: ignore[arg-type]
+        disability_periods=(eng.DisabilityPeriod(
+            onset=date(oy, om, od), first_entitlement=ent,
+            waiting_period_start=month(ex["waiting"])),),  # type: ignore[arg-type]
+        childcare_years=ex.get("childcare", frozenset()),  # type: ignore[arg-type]
+        qc_total_to_date=lump, qc_total_51_to_date=lump,
+    )
+    return eng.compute(w, params=present_law(alt))
