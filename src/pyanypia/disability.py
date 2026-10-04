@@ -82,7 +82,7 @@ def childcare_aime(
                 row[in2[k]] = -1
                 drops[i] += 1
     total = np.zeros(rows)
-    for j in range(width):
-        total = total + np.where(sel[:, j] == 1, x[:, j], 0.0)
+    for col in range(width):
+        total = total + np.where(sel[:, col] == 1, x[:, col], 0.0)
     result = np.floor(total / ((n - drops).astype(float) * 12.0))
     return out(result[0]) if single else result

@@ -14,9 +14,11 @@ from tests.cases import Case, adjusted_birth_index
 QC50 = 50.0
 
 
-def qc_lumps(earn: dict[int, float]) -> int:
-    """Pre-1978 QCs under the library's annual rule, for the engine's summary field."""
-    return sum(min(4, math.floor(v / QC50)) for y, v in earn.items() if 1951 <= y <= 1977)
+def early_qcs(earn: dict[int, float]) -> dict[int, int]:
+    """Pre-1978 QCs under the library's annual rule. The engine computes QCs
+    from earnings only from 1978; given these year by year it also counts
+    them inside quarter windows (a summary lump it would not)."""
+    return {y: min(4, math.floor(v / QC50)) for y, v in earn.items() if 1951 <= y <= 1977}
 
 
 def month(index: int) -> eng.MonthYear:
@@ -25,12 +27,11 @@ def month(index: int) -> eng.MonthYear:
 
 def run_retired(case: Case, alt: int = 2, **worker_kw: Any) -> eng.Results:
     kb = adjusted_birth_index(case.birth)
-    lump = qc_lumps(case.earnings)
     w = eng.Worker(
         dob=date(*case.birth), sex=eng.Sex.MALE, benefit_type=eng.BenefitType.OLD_AGE,
         earnings=case.earnings, entitlement=month(kb + case.claim_age),
         benefit_date=month(kb + case.benefit_age),
-        qc_total_to_date=lump, qc_total_51_to_date=lump, **worker_kw,
+        qcs_by_year=early_qcs(case.earnings), **worker_kw,
     )
     return eng.compute(w, params=present_law(alt))
 
@@ -39,7 +40,6 @@ def run_disabled(case: Case, alt: int = 2) -> eng.Results:
     ex = case.extra
     oy, om, od = ex["onset"]  # type: ignore[misc]
     ent = month(ex["ent"])  # type: ignore[arg-type]
-    lump = qc_lumps(case.earnings)
     w = eng.Worker(
         dob=date(*case.birth), sex=eng.Sex.MALE, benefit_type=eng.BenefitType.DISABILITY,
         earnings=case.earnings, entitlement=ent, benefit_date=month(ex["ben"]),  # type: ignore[arg-type]
@@ -47,6 +47,6 @@ def run_disabled(case: Case, alt: int = 2) -> eng.Results:
             onset=date(oy, om, od), first_entitlement=ent,
             waiting_period_start=month(ex["waiting"])),),  # type: ignore[arg-type]
         childcare_years=ex.get("childcare", frozenset()),  # type: ignore[arg-type]
-        qc_total_to_date=lump, qc_total_51_to_date=lump,
+        qcs_by_year=early_qcs(case.earnings),
     )
     return eng.compute(w, params=present_law(alt))

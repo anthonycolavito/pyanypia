@@ -68,10 +68,10 @@ def test_computation_years():
 def test_quarters_and_insured():
     assert E.quarters_of_coverage({2020: 1e6, 2021: 0.0, 2022: 3620.0}).tolist() == [4, 0, 2]
     earn = {y: 50000.0 for y in range(1990, 2000)}       # 40 QCs
-    assert E.fully_insured(earn, 1960, 6, 2022, through_year=2021)
+    assert E.fully_insured(earn, 1960, 6, through_year=2021)
     earn39 = dict(earn)
     earn39[1999] = float(CURRENT_LAW.qc_amount[1999 - FIRST_YEAR] * 3)  # 39 QCs
-    assert not E.fully_insured(earn39, 1960, 6, 2022, through_year=2021)
+    assert not E.fully_insured(earn39, 1960, 6, through_year=2021)
 
 
 def test_years_of_coverage():

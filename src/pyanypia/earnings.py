@@ -166,25 +166,133 @@ def _pre1951_total(m: np.ndarray, first: int) -> np.ndarray:
     return np.asarray(np.minimum(np.where(years[None, :] < 1951, m, 0.0).sum(axis=1), 42000.0))
 
 
+def _accumulate(qc: np.ndarray, first: int, q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    """QCs earned from quarter q1 through q2 (quarter index 4*year + 0..3).
+    A year's QCs count in any of its quarters, up to the quarters of it in the
+    range (QcArray::accumulate)."""
+    n, width = qc.shape
+    rows = np.arange(n)
+    cum = np.concatenate([np.zeros((n, 1), dtype=np.int64), np.cumsum(qc, axis=1)], axis=1)
+
+    def year_qcs(y: np.ndarray) -> np.ndarray:
+        j = y - first
+        inside = (j >= 0) & (j < width)
+        return np.where(inside, qc[rows, np.clip(j, 0, width - 1)], 0)
+
+    def years_between(ya: np.ndarray, yb: np.ndarray) -> np.ndarray:
+        ja, jb = np.clip(ya - first, 0, width), np.clip(yb - first + 1, 0, width)
+        return np.where(jb > ja, cum[rows, jb] - cum[rows, ja], 0)
+
+    y1, k1 = np.divmod(q1, 4)
+    y2, k2 = np.divmod(q2, 4)
+    spanning = (np.minimum(year_qcs(y1), 4 - k1) + years_between(y1 + 1, y2 - 1)
+                + np.minimum(year_qcs(y2), k2 + 1))
+    within = np.minimum(k2 - k1 + 1, year_qcs(y1))
+    return np.asarray(np.where(q1 > q2, 0, np.where(y1 == y2, within, spanning)))
+
+
+NO_FREEZE = 10_000  # a freeze start year later than any data
+
+
+def _fully_insured_at(
+    m: np.ndarray, qc: np.ndarray, first: int, kb_year: np.ndarray, through_q: np.ndarray,
+    freeze_from: np.ndarray,
+) -> np.ndarray:
+    """PiaCal::fins1Cal's fully insured test as of quarter `through_q`: a QC
+    for each year elapsed after 21 and before 62, less years of disability
+    from `freeze_from`, at least 6 and at most 40."""
+    lump = np.minimum((_pre1951_total(m, first) / 400.0).astype(np.int64), 56)
+    total = lump + _accumulate(qc, first, np.full(through_q.shape, 4 * 1951), through_q)
+    e2 = np.minimum(through_q // 4, kb_year + 61)
+    e1 = np.maximum(kb_year + 21, 1950)
+    frozen = np.where(freeze_from <= e2, e2 - np.maximum(freeze_from, e1 + 1) + 1, 0)
+    return np.asarray(total >= np.minimum(40, np.maximum(6, e2 - e1 - frozen)))
+
+
 def fully_insured(
-    earnings: Earnings, birth_year: ArrayLike, birth_month: ArrayLike, elig_year: ArrayLike, *,
-    through_year: ArrayLike, first_year: int | None = None, birth_day: ArrayLike = 15,
-    policy: Policy = CURRENT_LAW,
+    earnings: Earnings, birth_year: ArrayLike, birth_month: ArrayLike, *,
+    through_year: ArrayLike, through_month: ArrayLike = 12, first_year: int | None = None,
+    birth_day: ArrayLike = 15, policy: Policy = CURRENT_LAW,
 ) -> Any:
-    """Whether the worker has a quarter of coverage for each elapsed year
-    (at least 6, at most 40) by the end of `through_year`."""
+    """Whether the worker is fully insured in (through_year, through_month):
+    a quarter of coverage for each year elapsed after 21 and before 62 (at
+    least 6, at most 40), counting QCs through that month's quarter."""
     m, first, single = as_earnings(earnings, first_year)
     rows = m.shape[0]
-    through = _rows(through_year, "through_year", rows)
-    years = _years(first, m.shape[1])
-    lump = np.minimum((_pre1951_total(m, first) / 400.0).astype(np.int64), 56)
-    keep = (years[None, :] >= 1951) & (years[None, :] <= through[:, None])
-    total = lump + np.where(keep, _qcs(m, first, policy), 0).sum(axis=1)
     ky, _ = adjusted_birth(birth_year, birth_month, birth_day)
-    e2 = np.minimum(through, as_int("elig_year", elig_year) - 1)
-    e1 = np.maximum(ky + 21, 1950)
-    required = np.minimum(40, np.maximum(6, e2 - e1))
-    return _result(np.asarray(total >= required), single)
+    q = 4 * _rows(through_year, "through_year", rows) + (
+        _rows(through_month, "through_month", rows) - 1) // 3
+    ok = _fully_insured_at(m, _qcs(m, first, policy), first, np.broadcast_to(ky, (rows,)), q,
+                           np.full(rows, NO_FREEZE))
+    return _result(ok, single)
+
+
+def _age21_quarter(ky: np.ndarray, km: np.ndarray) -> np.ndarray:
+    """The quarter after the one of the adjusted birth date, 21 years on."""
+    return np.asarray(4 * (ky + 21) + (km - 1) // 3 + 1)
+
+
+def _twenty_of_forty(
+    qc: np.ndarray, first: int, d2: np.ndarray, age21: np.ndarray, special: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    """(QCs in at least half the quarters of the window ending d2, window
+    start). The window is 40 quarters; with `special`, a worker whose window
+    reaches back before 21 uses the quarters since 21, at least 12
+    (PiaData::qcDisReqCal, qcDiSpec)."""
+    d1 = d2 - 39
+    if special:
+        d1 = np.where(d1 < age21, np.where(d2 - age21 < 11, d2 - 11, age21), d1)
+    return np.asarray(_accumulate(qc, first, d1, d2) >= (d2 - d1 + 1) // 2), np.asarray(d1)
+
+
+def _disability_insured_at(
+    m: np.ndarray, qc: np.ndarray, first: int, ky: np.ndarray, km: np.ndarray,
+    window_from: np.ndarray, window_to: np.ndarray, entitlement_q: np.ndarray,
+    freeze_from: np.ndarray,
+) -> np.ndarray:
+    """PiaCal::disInsCal: fully insured at entitlement, and 20 QCs in a
+    40-quarter window ending in some quarter from `window_to` back to
+    `window_from` (the onset quarter); then the same with the special window
+    for young workers."""
+    age21 = _age21_quarter(ky, km)
+    ok = np.zeros(m.shape[0], dtype=bool)
+    trials = window_to - window_from
+    for i in range(int(trials.max(initial=0)), -1, -1):
+        hit, _ = _twenty_of_forty(qc, first, window_from + i, age21, special=False)
+        ok |= (i <= trials) & hit
+    young = ~ok & (window_from - 39 < age21)
+    for i in range(int(trials.max(initial=0)) + 1):
+        hit, _ = _twenty_of_forty(qc, first, window_from + i, age21, special=True)
+        ok |= young & (i <= trials) & hit
+    return np.asarray(ok & _fully_insured_at(m, qc, first, ky, entitlement_q, freeze_from))
+
+
+def disability_insured(
+    earnings: Earnings, birth_year: ArrayLike, birth_month: ArrayLike, onset_year: ArrayLike,
+    onset_month: ArrayLike, *, first_year: int | None = None, birth_day: ArrayLike = 15,
+    onset_day: ArrayLike = 15, entitlement: tuple[ArrayLike, ArrayLike] | None = None,
+    policy: Policy = CURRENT_LAW,
+) -> Any:
+    """Whether a worker disabled at onset is insured for disability benefits:
+    fully insured, and 20 quarters of coverage in the 40 ending with onset
+    (fewer for workers disabled before 31). `entitlement` is (year, month),
+    defaulting to the end of the five-month waiting period."""
+    m, first, single = as_earnings(earnings, first_year)
+    rows = m.shape[0]
+    oy, om = _rows(onset_year, "onset_year", rows), _rows(onset_month, "onset_month", rows)
+    od = _rows(onset_day, "onset_day", rows)
+    waiting = 12 * oy + om - 1 + np.where(od == 1, 0, 1)
+    if entitlement is None:
+        ent = waiting + 5
+    else:
+        ent = 12 * _rows(entitlement[0], "entitlement_year", rows) + _rows(
+            entitlement[1], "entitlement_month", rows) - 1
+        waiting = ent - 5
+    ky, km = (np.broadcast_to(a, (rows,)) for a in adjusted_birth(birth_year, birth_month,
+                                                                   birth_day))
+    ok = _disability_insured_at(m, _qcs(m, first, policy), first, ky, km,
+                                (12 * oy + om - 1) // 3, waiting // 3, ent // 3, oy)
+    return _result(ok, single)
 
 
 def years_of_coverage(

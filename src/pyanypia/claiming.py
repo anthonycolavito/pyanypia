@@ -81,14 +81,15 @@ def delayed_credit_factor(
 def adjustment_months(
     birth_year: ArrayLike, birth_month: ArrayLike, claim_age: ArrayLike, *,
     birth_day: ArrayLike = 15, benefit_age: ArrayLike | None = None,
-    policy: Policy = CURRENT_LAW,
+    policy: Policy = CURRENT_LAW, _credits_from: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """(months of early reduction, months of delayed credit) for a retired worker.
 
     Delayed credits earned in the year of entitlement are credited the
     following January (PiaParams::monthsDriCal), so a benefit paid in the
     entitlement year counts only the credits through the prior December,
-    unless the worker has reached 70.
+    unless the worker has reached 70. Credits also start no earlier than
+    the worker is fully insured (`retired_worker` supplies that date).
     """
     ky, km = adjusted_birth(birth_year, birth_month, birth_day)
     claim = as_int("claim_age", claim_age)
@@ -102,6 +103,7 @@ def adjustment_months(
     kb = month_index(ky, km)
     ent, ben = kb + claim, kb + ben_age
     fra = kb + nra
+    start = fra if _credits_from is None else np.maximum(fra, _credits_from)
     age70 = kb + 70 * 12
     jan_ent = 12 * (ent // 12)
     credited_to = np.where(
@@ -109,19 +111,20 @@ def adjustment_months(
         np.where((age70 <= ben) | (ben // 12 > ent // 12), ent, np.maximum(fra, jan_ent)))
     late = claim >= nra
     ar = np.where(late, 0, nra - claim)
-    drc = np.where(late, np.maximum(credited_to - fra, 0), 0)
+    drc = np.where(late, np.maximum(credited_to - start, 0), 0)
     return ar, drc
 
 
 def benefit_factor(
     birth_year: ArrayLike, birth_month: ArrayLike, claim_age: ArrayLike, *,
     birth_day: ArrayLike = 15, benefit_age: ArrayLike | None = None,
-    policy: Policy = CURRENT_LAW,
+    policy: Policy = CURRENT_LAW, _credits_from: np.ndarray | None = None,
 ) -> Any:
     """The multiplier on the PIA for a retired worker claiming at `claim_age`,
     for the benefit paid at `benefit_age` (default: the claim month)."""
     ar, drc = adjustment_months(birth_year, birth_month, claim_age, birth_day=birth_day,
-                                benefit_age=benefit_age, policy=policy)
+                                benefit_age=benefit_age, policy=policy,
+                                _credits_from=_credits_from)
     ky, _ = adjusted_birth(birth_year, birth_month, birth_day)
     elig = np.broadcast_to(ky + 62, ar.shape)
     f = np.where(ar > 0, early_reduction_factor(ar, policy=policy),

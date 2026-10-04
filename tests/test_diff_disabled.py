@@ -3,11 +3,12 @@
 import numpy as np
 import pytest
 
-from pyanypia import Policy, disabled_worker
+from pyanypia import Policy, disability_insured, disabled_worker
 from tests.cases import as_matrix, column, disabled_cases
 from tests.engine import run_disabled
 
-SUPPORTED = {"WAGE_IND", "SPEC_MIN", "CHILD_CARE", " "}  # " ": every PIA is zero
+# " " is the engine's answer when every PIA is zero
+SUPPORTED = {"WAGE_IND", "SPEC_MIN", "CHILD_CARE", "WAGE_IND_NON_FREEZE", " "}
 
 
 def _ours(cases, alt=2):
@@ -32,15 +33,12 @@ def _sweep(cases, alt=2):
     for i, c in enumerate(cases):
         r = run_disabled(c, alt)
         methods.add(r.method)
-        # a special-minimum winner takes its family maximum from the method
-        # with the highest AIME, which can be the (unmodelled) non-freeze one
-        out_of_scope = r.method == "SPEC_MIN" and "WAGE_IND_NON_FREEZE" in r.methods
-        if r.method not in SUPPORTED or out_of_scope:
+        if r.method not in SUPPORTED:
             excluded += 1
             continue
-        got = (ours.aime[i], ours.pia[i], ours.mfb[i], ours.benefit[i])
-        want = (r.methods[r.method].aime if r.method in ("WAGE_IND", "CHILD_CARE") else r.aime,
-                r.pia, r.mfb, r.monthly_benefit)
+        got = (ours.aime[i], ours.pia[i], ours.mfb[i], ours.benefit[i], bool(ours.insured[i]))
+        want = (r.methods[r.method].aime if r.method not in ("SPEC_MIN", " ") else r.aime,
+                r.pia, r.mfb, r.monthly_benefit, r.disability_insured)
         if got != want:
             bad.append((i, c.birth, c.extra, got, want))
     assert not bad, f"{len(bad)} mismatches; first: {bad[:2]}"
@@ -56,6 +54,19 @@ def test_disabled_vs_engine(alt):
 def test_childcare_vs_engine():
     methods = _sweep(disabled_cases(np.random.default_rng(9), 600, childcare=True))
     assert "CHILD_CARE" in methods
+
+
+def test_public_disability_insured_agrees():
+    cases = disabled_cases(np.random.default_rng(31), 300)
+    m, first = as_matrix(cases)
+    onset = lambda k: column(cases, lambda c: c.extra["onset"][k])  # noqa: E731
+    ent = column(cases, lambda c: c.extra["ent"])
+    got = disability_insured(m, column(cases, lambda c: c.birth[0]),
+                             column(cases, lambda c: c.birth[1]), onset(0), onset(1),
+                             first_year=first, onset_day=onset(2),
+                             entitlement=(ent // 12, ent % 12 + 1))
+    assert got.tolist() == _ours(cases).insured.tolist()
+    assert 0 < got.sum() < len(cases)
 
 
 def test_default_entitlement_follows_waiting_period():

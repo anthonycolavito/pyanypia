@@ -19,6 +19,7 @@ from pyanypia.earnings import (
     aime,
     capped_earnings,
     computation_years,
+    disability_insured,
     elapsed_years,
     fully_insured,
     indexed_earnings,
@@ -63,4 +64,5 @@ __all__ = [
     "childcare_aime",
     "di_family_max",
     "disabled_worker",
+    "disability_insured",
 ]
