@@ -1,16 +1,19 @@
 # pyanypia
 
-A pure-Python port of the calculation engine inside the Social Security
-Administration's **Detailed Calculator (AnyPIA)**, 2026 Trustees Report
-version — Social Security benefit calculations you can run, inspect, batch,
-and script in Python.
+The Social Security benefit formula as Python functions: AIME, PIA, the
+family maximum, COLAs, claiming-age reductions and credits, the special
+minimum, spouse and survivor benefits. Every function takes NumPy arrays,
+so the same call that answers "what would this worker get?" also runs a
+microsimulation over a million workers.
 
-Every number is checked against the official calculator. SSA publishes the
-Detailed Calculator's C++ source; `oracle/` vendors it unmodified, builds it,
-and runs it over generated case suites. The Python engine must reproduce
-those answers to the cent — not only the final benefit, but the AIME and the
-PIA under each computation method, so a divergence localises to one
-computation rather than to "somewhere in the port".
+The arithmetic is SSA's own. Each result is checked, to the cent, against
+the full port of SSA's Detailed Calculator (AnyPIA, 2026 Trustees Report).
+
+> **Looking for the full calculator?** Versions up to 0.2.0 of this package
+> were a complete port of AnyPIA, with `Worker`, `compute`, Statements and
+> `.pia` files. It now lives on as
+> [anypia-engine](https://github.com/anthonycolavito/anypia-engine), and is
+> the oracle this library is tested against.
 
 ## Install
 
@@ -18,266 +21,165 @@ computation rather than to "somewhere in the port".
 pip install git+https://github.com/anthonycolavito/pyanypia
 ```
 
-Python 3.11 or newer. The runtime has no dependencies; `pip install
-"pyanypia[pandas]"` adds the DataFrame helpers.
+Python 3.11 or newer, with NumPy. `pip install "pyanypia[pandas] @ git+..."`
+adds `Benefit.to_frame()`.
 
 ## Quickstart
 
 ```python
-from datetime import date
-import pyanypia as pia
+from pyanypia import CURRENT_LAW, Auxiliary, family_benefits, retired_worker
 
-worker = pia.Worker(
-    dob=date(1960, 3, 15),
-    sex=pia.Sex.FEMALE,
-    benefit_type=pia.BenefitType.OLD_AGE,
-    earnings={year: 52_000.0 for year in range(1985, 2026)},
-    entitlement=pia.MonthYear(2027, 4),
-)
+# A worker born 15 June 1964 who earned the national average wage every
+# year from 22 to 66, claiming at 62 and 1 month, at the normal retirement
+# age (67), and at 70. Ages are in months; the PIA includes COLAs to the
+# claim month, so it is higher for a later claim.
+earnings = {year: float(CURRENT_LAW.awi[year - 1937]) for year in range(1986, 2031)}
+for months in (62 * 12 + 1, 67 * 12, 70 * 12):
+    b = retired_worker(earnings, 1964, 6, months)
+    print(f"claim at {months // 12}y{months % 12}m: AIME {b.aime:,.0f}  "
+          f"PIA ${b.pia:,.2f}  benefit ${b.benefit:,.0f}/month")
 
-r = pia.compute(worker)
-print(f"AIME {r.aime:,.0f}   PIA ${r.pia:,.2f}   benefit ${r.mba:,.2f}")
-print(r.detail())
+# The same worker at 67 with the middle bracket cut from 32% to 30%.
+reform = CURRENT_LAW.replace(pia_pct=(0.90, 0.30, 0.15))
+b = retired_worker(earnings, 1964, 6, 67 * 12, policy=reform)
+print(f"reform PIA ${b.pia:,.2f}")
+
+# A spouse born March 1966 who claims at 64, in the month the worker claims at 67.
+b = retired_worker(earnings, 1964, 6, 67 * 12)
+spouse = Auxiliary("spouse", 1966, 3, claim_age=64 * 12 + 3)
+fam = family_benefits(b.pia, b.mfb, [spouse], benefit_year=2031, benefit_month=6)
+print(f"spouse benefit ${fam.benefit[0]:,.0f}/month")
 ```
 
-`detail()` shows every method that applied and which one won:
-
 ```
-insured: 1 (fully insured)
-eligibility year: 2022
-AIME: 7719
-  WAGE_IND: PIA 3399.90  MFB 5951.50 *
-  SPEC_MIN: PIA 1154.00  MFB 1733.10
-PIA 3399.90, MFB 5951.50, benefit 3399.00 at age 67y1m
+claim at 62y1m: AIME 5,825  PIA $2,609.80  benefit $1,837/month
+claim at 67y0m: AIME 5,968  PIA $2,998.50  benefit $2,998/month
+claim at 70y0m: AIME 5,968  PIA $3,219.40  benefit $3,992/month
+reform PIA $2,892.80
+spouse benefit $1,155/month
 ```
 
-Every snippet here is in `docs/examples/tour.py`, which the test suite runs.
+This is `docs/examples/hypotheticals.py`, which the test suite runs.
 
-## What it computes
+## The building blocks
 
-- **Retirement, disability, and survivor benefits**, plus benefits for
-  spouses, children, and widow(er)s, with the family maximum distributed
-  among them.
-- **Every PIA computation method** the calculator knows: wage-indexed
-  (with the windfall elimination provision), old-start, the pre-1977 PIA
-  table, transitional guarantee, special minimum, frozen minimum, child-care
-  dropout years, the disability guarantee, the re-indexed widow(er)
-  guarantee, and the non-freeze parallel computation — then picks the
-  highest, as the law requires.
-- **Totalization** for workers with too few US quarters to qualify on their
-  own.
-- **Social Security Statement estimates** — retirement at 70, at full
-  retirement age and at the earliest age, plus survivor and disability
-  estimates.
-- **Earnings projection**: a partial earnings record extended backward and
-  forward by the average wage index or a flat rate, plus military service
-  wage credits.
+The one-call functions at the bottom of this table chain the others. Each
+of those is usable alone.
 
-### Family benefits
+| Function | What it gives |
+|---|---|
+| `eligibility_year` | year of attaining 62, or of disability onset or death if earlier |
+| `computation_years` | elapsed years less dropout years (5, or 1 per 5 for disability) |
+| `indexed_earnings`, `capped_earnings` | earnings capped at the taxable maximum and wage-indexed |
+| `aime` | average indexed monthly earnings over the highest computation years |
+| `bend_points`, `pia` | the PIA formula at eligibility |
+| `family_max`, `di_family_max` | the maximum family benefit at eligibility |
+| `apply_colas` | carries a PIA or maximum from eligibility to a benefit month |
+| `normal_retirement_age`, `earliest_claim_age` | in months |
+| `benefit_factor`, `early_reduction_factor`, `delayed_credit_factor` | the multiplier for claiming early or late |
+| `monthly_benefit` | factor × PIA, rounded as SSA rounds it |
+| `quarters_of_coverage`, `fully_insured`, `disability_insured` | insured status |
+| `years_of_coverage`, `special_minimum_pia` | the special minimum |
+| `childcare_aime` | the AIME with child-care dropout years |
+| `family_benefits`, `Auxiliary` | spouse, child and survivor benefits under the family maximum |
+| `widow_guarantee_pia` | the re-indexed widow(er)'s guarantee |
+| `wep_pia`, `gpo_offset` | the repealed WEP and GPO, off by default |
+| `retired_worker`, `disabled_worker`, `deceased_worker` | the whole chain in one call |
+
+## Conventions
+
+- **One worker or many.** Pass scalars and a `{year: amount}` dict of
+  earnings, and you get scalars back. Pass arrays with one entry per worker
+  and an `(n, years)` earnings matrix with `first_year=`, and you get
+  arrays back. Inputs broadcast, so a single birth month can apply to every
+  worker.
+- **Ages are whole months**, counted from the month of the day before
+  birth. That is how SSA counts: someone born 15 March 1964 is 62 (744
+  months) in March 2026. Someone born on the 1st attains each age in the
+  month before their birthday month, which `birth_day=1` handles.
+- **Benefits are for a month.** The convenience functions compute the
+  benefit for the claim month unless you pass a later `benefit_age` (or
+  `benefit=(year, month)`), and they ignore earnings from the benefit year
+  on.
+- **Errors are loud.** Bad input raises `ValueError`, naming the field, how
+  many rows are wrong and the first one. Nothing is silently clipped except
+  earnings above the taxable maximum, which the law ignores.
+
+## Policy and reforms
+
+Every function takes `policy=`, defaulting to `CURRENT_LAW`: present law
+under the 2026 Trustees Report intermediate assumptions.
+`Policy.current_law(1)` and `Policy.current_law(3)` give the low- and
+high-cost alternatives.
+
+A `Policy` holds the primitive inputs: the AWI history and projected
+growth, COLAs, taxable-maximum history, the 1979 bend points, the PIA and
+family-maximum percentages, reduction and delayed-credit rates, and so on.
+`replace` changes them, and everything derived from them follows:
 
 ```python
-family_worker = pia.Worker(
-    dob=date(1958, 6, 2),
-    sex=pia.Sex.MALE,
-    benefit_type=pia.BenefitType.OLD_AGE,
-    earnings={year: 70_000.0 for year in range(1980, 2024)},
-    entitlement=pia.MonthYear(2024, 7),
-    family=[
-        pia.FamilyMember(bic="B", dob=date(1960, 4, 9),
-                         entitlement=pia.MonthYear(2024, 7)),
-        pia.FamilyMember(bic="C1", dob=date(2008, 2, 1),
-                         entitlement=pia.MonthYear(2024, 7)),
-    ],
-)
-r = pia.compute(family_worker)
-for member in r.family:
-    print(member.bic, f"${member.rounded_benefit:,.2f}")
+faster_wages = CURRENT_LAW.replace(
+    awi_growth={y: g + 0.5 for y, g in CURRENT_LAW.awi_growth.items()})
+four_brackets = CURRENT_LAW.replace(
+    pia_bend_base=(180.0, 1085.0, 2000.0), pia_pct=(0.90, 0.32, 0.15, 0.05))
 ```
 
-### A Statement
+To pin a derived value directly, use `with_series`, for example
+`CURRENT_LAW.with_series("taxmax", {2030: 250_000.0})`. Pinned values are
+final: later years are not re-projected from them.
 
-A Statement case is its own benefit type, and it takes no entitlement --
-the estimates are what the worker would get at each age:
+## Microsimulation
 
 ```python
-statement_worker = pia.Worker(
-    dob=date(1975, 5, 20),
-    sex=pia.Sex.MALE,
-    benefit_type=pia.BenefitType.STATEMENT,
-    earnings={year: 60_000.0 for year in range(1998, 2026)},
-)
-s = pia.calculate_statement(statement_worker, month_now=6, age_plan=65)
-print(s.detail())
+b = retired_worker(earnings, birth_year, 6, claim_age, first_year=1980)
 ```
 
-### Many workers at once
+With 100,000 synthetic workers and 66 years of earnings each, this call
+takes about 2 seconds on a laptop (`docs/examples/microsim.py`). The work
+is NumPy throughout, with Python loops only over years, never over people.
 
-```python
-from pyanypia.batch import compute_many, compute_frame
+## What is exact, and what is not covered
 
-if __name__ == "__main__":                       # required: see below
-    results = compute_many(workers)              # uses every CPU
-    frame = compute_frame(df, earnings="earn")   # pandas extra
-```
+Results match AnyPIA to the cent for wage-indexed computations with
+eligibility in 1979 or later: retirement, disability (with the child-care
+dropout years and the non-freeze computation), and survivor benefits
+(with the re-indexed widow(er)'s guarantee), plus the special minimum and
+the WEP.
 
-`compute_many` returns results in input order, and the answers do not depend
-on how the work was split across processes.
+Not covered:
 
-The guard is not decoration. Work is parallelised with the "spawn" start
-method, so each child re-imports the calling module; without a
-`__main__` guard the child calls `compute_many` again, and so does its
-child. Pass `processes=1` to stay in this process and avoid the question
-entirely.
+- the pre-1979 computation methods: old-start, the PIA table, the
+  transitional guarantee and the frozen minimum
+- totalization, and the disability guarantee after a prior period of
+  disability
+- divorced spouses, and the retirement earnings test
+- **pre-1978 quarters of coverage**, which are approximated: SSA counted
+  calendar-quarter wages, while this library applies the annual rule with
+  the $50 amount
+- **the GPO**, which follows the statute, because AnyPIA has none
 
-### `.pia` interoperability
+The Social Security Fairness Act repealed the WEP and GPO for benefits
+after December 2023, so `CURRENT_LAW` applies neither.
+`CURRENT_LAW.replace(wep_enabled=True)` turns the WEP back on for
+historical or counterfactual work.
 
-The calculator's own case-file format reads and writes:
+## How it is tested
 
-```python
-from pyanypia.io import read_pia_file, write_pia
-from pyanypia.params import params_for
-
-cases = read_pia_file("cases.pia")
-# a case file carries its own assumptions on line 40; honour them rather
-# than silently costing every case under the intermediate alternative
-results = [
-    pia.compute(c.worker,
-                params=params_for(c.assumptions.ialtbi, c.assumptions.ialtaw))
-    for c in cases
-]
-with open("out.pia", "w") as f:
-    f.write(write_pia(cases))
-```
-
-Files written by pyanypia are read identically by the official calculator —
-that equivalence is a test, run over every case in the suites below.
-
-## Reforms
-
-`compare()` computes a worker under present law and under a reform, and
-reports the difference:
-
-```python
-from pyanypia.law import Reform, NraChange
-
-reform = Reform(nra=NraChange(1990, 2100, variant=1))  # hold the FRA at 65
-print(pia.compare(worker, reform).detail())
-```
-```
-PIA         3399.90 ->    3399.90  (+0.00)
-benefit     3399.00 ->    3898.00  (+499.00, +14.7%)
-```
-
-The PIA is untouched and the benefit is not: this worker claims at 67 and
-1 month, which present law reduces nothing and credits nothing, but which
-is fifteen months of delayed retirement credit once the full retirement
-age is 65.
-
-Nine changes are supported, each mapped to the LawChange class it ports
-and each validated against the oracle over the `reform_v1` sweep:
-
-| `Reform` field | LawChange | What it does |
-|---|---|---|
-| `nra` | `NRACHANGE` | Full retirement age: held at 65, the 66-to-67 plateau removed, or rising after 2011 — with the reduction slopes past 67 and 69 that come with it |
-| `cola` | `COLACHANGE` | Benefit increases shifted by a percentage point over a span |
-| `wage_base` | `WAGEBASECHG` | Ad hoc contribution and benefit bases, after which projection resumes off the last of them |
-| `di_dropout_five` | `DIDROP5` | A flat five dropout years in place of the one-for-five rule |
-| `new_formula` | `NEWFORMULA` | A replacement benefit formula: one to four bend points with their own percentages, indexed off wages past the span |
-| `declining_perc` | `DECLINEPERC` | The formula percentages falling year by year, compounding, over one or more intervals |
-| `special_min` | `NEWSPECMIN` | A new special-minimum amount per year of coverage, restarting the indexed table where it begins |
-| `comp_point` | `AGE65COMP` | The computation point moving from age 62 towards 65, phased in |
-| `childcare_dropout` | `CHILDCAREDROPOUT` | Child-care dropout years for everyone, more of them, and counting years under a share of the average wage rather than only empty ones |
-
-Anything else raises rather than returning a present-law answer under a
-reform's name — see [Limitations](#limitations) for why the list is short.
-
-## Fidelity
-
-The differential suites, all penny-exact against the compiled oracle -- 9,302 cases in total:
-
-| Suite | Cases | What it covers |
-|---|---:|---|
-| `retire_v1` | 462 | Modern retirement across cohorts, earnings patterns, claim ages |
-| `surv_v1` | 450 | Survivors: aged and disabled widow(er)s, young families, children |
-| `pebs_v1` | 420 | Social Security Statement estimates |
-| `hist_v1` | 434 | Old-start, PIA-table and transitional-guarantee cohorts, 1900–1928 |
-| `dib_v1` | 176 | Disability, freeze and non-freeze computations |
-| `total_v1` | 96 | Totalization, pro-rated PIAs |
-| `fam_v1` | 72 | Retirement with spouses and children |
-| `special_v1` | 60 | Disability guarantee, child-care dropout years |
-| `proj_v1` | 42 | Projected earnings, steady earnings types, military credits |
-| `freeze_v1` | 18 | Earnings inside a disability freeze window; two periods of disability |
-| `assum_v1` | 48 | The assumption codes that are not Trustees alternatives |
-| `reform_v1` | 3,440 | 172 cases under present law and nineteen reform variants |
-| alternatives I and III | 3,544 | the eight sweeps above other than the Statement, reform and freeze suites, re-costed under the low-cost and high-cost projections |
-
-Each case is compared field by field: insured status, eligibility year, the
-AIME/PIA/MFB of every applicable method, the winning method, the family
-maximum, the reduction or credit months, each family member's benefit, and
-the payable amount.
-
-To rebuild and re-verify from source:
+The test suite generates thousands of random workers (retired, disabled,
+survivors, families, low earners, short careers, maximum earners), runs
+each through this library and through
+[anypia-engine](https://github.com/anthonycolavito/anypia-engine), and
+requires every PIA, family maximum, factor and benefit to agree exactly.
+The engine itself agrees to the cent with SSA's C++ calculator. Policy
+parameters are also checked against values extracted from that C++.
 
 ```bash
-make -C oracle/build all             # needs clang++ and Boost headers
-python oracle/cases/generate.py all
-python oracle/run_oracle.py retire_v1 dib_v1 surv_v1 fam_v1 \
-    hist_v1 special_v1 total_v1 proj_v1 pebs_v1 reform_v1
-# and the same cases under the other two Trustees alternatives
-python oracle/run_oracle.py retire_v1@1 retire_v1@3   # ... and so on
-pytest
+pip install -e ".[dev,pandas]"
+pytest            # the fast suite
+pytest -m slow    # the large sweeps, about 17,000 more cases
 ```
 
-## Limitations
+## License
 
-- **Most policy reforms are out of scope.** Of the calculator's forty
-  LawChange types, batch `anypiab` visibly honours only some; the nine
-  listed under [Reforms](#reforms) are ported and validated, and
-  `Reform` rejects anything else rather than quietly returning present-law
-  answers under a reform's name. Which ones matter was measured rather
-  than assumed — `oracle/tools/scope_lawchg.py` switches each type on over
-  220 cases and counts how many answers move. `ALLEARN` is consulted
-  nowhere outside its own class; `TAXBENCHG` and `PSAACCT` reach only
-  output anypiab does not print; `CHILDCARECREDIT` is consulted but moved
-  no case tried. Two more are worth naming. A reformed
-  aged-spouse factor (`WIFEFACTOR`) never reaches the answer, because
-  `PiaCal` asks for `factorAgedSpouseCalPL()`, the present-law factor. And
-  the bend-point reforms (`BPFRACWAGE`, `BPMINCONST`) cannot be computed
-  at all: `PiaParamsLC` builds the bend-point wage series in its
-  constructor, which runs before `AnypiabDoc` calls `setHistFqinc()`, so
-  `setFqBppia()` reads a benefit-increase series of all zeros and nothing
-  recomputes it afterwards. Every eligibility year from the change onward
-  is left with the bend points of the year before it began, whatever
-  proportion was requested — asking for the full wage rate, which should
-  reproduce present law exactly, moves a 2005 eligibility from $1,500.10
-  to $1,137.80 — and where the span ends early the projection past it
-  divides zero by zero and returns NaN. The official `anypiabdoc.cpp`
-  constructs `PiaParamsAny` in the same order, so this is the calculator's
-  behaviour rather than an artefact of how we drive it. Since there is no
-  answer to check against, pyanypia does not offer one.
-- **Railroad earnings** are not credited. A `.pia` file containing them
-  is refused rather than read with the railroad component dropped.
-- **The Statement's disability estimate is unavailable below full
-  retirement age.** `PiaCalAny::pebsSetup` builds the disability scenario
-  with an onset date and no waiting-period date, and the freeze
-  calculation then requires one — so the official calculator cannot
-  produce this estimate either, and there is no answer to check against.
-  pyanypia returns the retirement and survivor estimates, which are
-  unaffected, and records the disability one in
-  `StatementResults.unavailable` with the reason; reading
-  `disability_pia` raises rather than returning a number. Above full
-  retirement age the calculator asks for no disability estimate and the
-  question does not arise, which is why the 420-case Statement suite is
-  penny-exact.
-- The windfall elimination provision follows present law, under which it is
-  repealed for benefits payable January 2024 and later.
-
-## Not an official SSA product
-
-pyanypia is derived from SSA/OACT's public-domain Detailed Calculator source
-(17 U.S.C. §105) but is **not** an official Social Security Administration
-product and is not endorsed by SSA. Amounts are research estimates — consult
-SSA for official benefit determinations.
-
-Licensed MIT; see `LICENSE` for the attribution notice that travels with the
-derived work.
+MIT. pyanypia is not an official Social Security Administration product;
+see `LICENSE`.

@@ -4,6 +4,34 @@ All notable changes to pyanypia are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-10-04
+
+**Breaking: pyanypia is now a library of benefit-formula functions.** The
+full AnyPIA port (`Worker`, `compute`, `compare`, Statements, `.pia` files,
+batch, `Law`/`Reform`) moved to
+[anypia-engine](https://github.com/anthonycolavito/anypia-engine) as
+`anypia_engine` 0.2.0, unchanged apart from its name.
+
+### Added
+
+- Vectorized functions over NumPy arrays: indexing, computation years,
+  AIME, the PIA and family-maximum formulas, COLAs, retirement ages and
+  claiming factors, insured status (fully and disability), the special
+  minimum, child-care dropout years, spouse/child/survivor benefits under
+  the family maximum, the re-indexed widow(er)'s guarantee, and the WEP and
+  GPO (off by default).
+- `retired_worker`, `disabled_worker` and `deceased_worker`, which run the
+  whole chain in one call and return a `Benefit` (`.to_frame()` with pandas).
+- `Policy`: primitive policy parameters with derived series, for all three
+  2026 Trustees Report alternatives, replacing `Law`/`Reform`.
+- Differential tests against anypia-engine: penny-exact for wage-indexed
+  computations with eligibility in 1979 or later.
+
+### Removed
+
+- Everything listed above as moved to anypia-engine, including the
+  vendored C++ oracle.
+
 ## [0.2.0] — 2026-08-23
 
 The first published release. Version 0.1.0 existed only as a development
