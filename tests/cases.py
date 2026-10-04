@@ -110,3 +110,65 @@ def disabled_cases(
             extra["childcare"] = frozenset(yrs)
         cases.append(Case((by, bm, 15), earn, extra=extra))
     return cases
+
+
+def life_family_cases(rng: np.random.Generator, n: int) -> list[Case]:
+    """Retired workers with an aged spouse, or a young spouse and children.
+    `extra["family"]` holds (bic, birth, entitlement month index)."""
+    cases = []
+    for _ in range(n):
+        by = int(rng.integers(1930, 1996))
+        birth = (by, 3, 15)
+        kb = adjusted_birth_index(birth)
+        claim = int(rng.integers(745, 841))
+        w_ent = kb + claim
+        members: list[tuple[str, tuple[int, int, int], int]] = []
+        if rng.random() < 0.5:
+            sbirth = (by + int(rng.integers(-4, 6)), 7, int(rng.choice([2, 20])))
+            s_claim = int(rng.integers(744 if sbirth[2] == 2 else 745, 830))
+            members.append(("B ", sbirth, max(adjusted_birth_index(sbirth) + s_claim, w_ent)))
+        else:
+            cby = w_ent // 12 - int(rng.integers(3, 16))
+            if rng.random() < 0.6:
+                members.append(("B2", (by + 15, 1, 15), w_ent))
+            members.append(("C1", (cby, 4, 10), w_ent))
+            if rng.random() < 0.5:
+                members.append(("C2", (cby + 2, 9, 9), w_ent))
+        ben = max(e for _, _, e in members) + int(rng.choice([0, 12]))
+        cases.append(Case(birth, career(rng, by, ben // 12 - 1), claim, ben - kb,
+                          extra={"family": members}))
+    return cases
+
+
+def survivor_cases(rng: np.random.Generator, n: int) -> list[Case]:
+    cases: list[Case] = []
+    while len(cases) < n:
+        by = int(rng.integers(1930, 1996))
+        dy = by + int(rng.integers(30, 80))
+        if not 1986 <= dy <= 2070:
+            continue
+        death = (dy, int(rng.integers(1, 13)), 20)
+        death_idx = 12 * dy + death[1] - 1
+        wbirth = (by + int(rng.integers(-3, 6)), 6, 10)
+        wkb = adjusted_birth_index(wbirth)
+        kind = str(rng.choice(["widow", "disabled_widow", "young_family", "child"]))
+        members: list[tuple[str, tuple[int, int, int], int]] = []
+        if kind == "widow":
+            members.append(("D ", wbirth, max(wkb + int(rng.integers(720, 830)), death_idx)))
+        elif kind == "disabled_widow":
+            ent = max(wkb + int(rng.integers(600, 716)), death_idx)
+            if ent - wkb >= 720:
+                continue
+            members.append(("W ", wbirth, ent))
+        else:
+            cby = dy - int(rng.integers(2, 16))
+            if kind == "young_family":
+                members.append(("E ", (by + 3, 2, 25), death_idx))
+                members.append(("C2", (cby - 2, 9, 9), death_idx))
+            members.append(("C1", (cby, 4, 10), death_idx))
+        ben = max(e for _, _, e in members) + int(rng.choice([0, 12]))
+        if ben // 12 > 2105:
+            continue
+        cases.append(Case((by, 3, 15), career(rng, by, dy),
+                          extra={"family": members, "death": death, "ben": ben}))
+    return cases

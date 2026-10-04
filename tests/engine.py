@@ -50,3 +50,29 @@ def run_disabled(case: Case, alt: int = 2) -> eng.Results:
         qcs_by_year=early_qcs(case.earnings),
     )
     return eng.compute(w, params=present_law(alt))
+
+
+def _family(case: Case) -> tuple[eng.FamilyMember, ...]:
+    out = []
+    for bic, birth, ent in case.extra["family"]:  # type: ignore[attr-defined]
+        onset = None
+        if bic.strip() == "W":  # disabled a year before entitlement
+            onset_m = month(ent - 12)
+            onset = date(onset_m.year, onset_m.month, 5)
+        out.append(eng.FamilyMember(bic=bic, dob=date(*birth), entitlement=month(ent),
+                                    disability_onset=onset))
+    return tuple(out)
+
+
+def run_life_family(case: Case, alt: int = 2) -> eng.Results:
+    return run_retired(case, alt, family=_family(case))
+
+
+def run_survivor(case: Case, alt: int = 2) -> eng.Results:
+    w = eng.Worker(
+        dob=date(*case.birth), sex=eng.Sex.MALE, benefit_type=eng.BenefitType.SURVIVOR,
+        earnings=case.earnings, death_date=date(*case.extra["death"]),  # type: ignore[misc]
+        benefit_date=month(case.extra["ben"]),  # type: ignore[arg-type]
+        family=_family(case), qcs_by_year=early_qcs(case.earnings),
+    )
+    return eng.compute(w, params=present_law(alt))

@@ -12,7 +12,13 @@ from pyanypia.claiming import (
     normal_retirement_age,
     spouse_reduction_factor,
 )
-from pyanypia.convenience import Benefit, disabled_worker, retired_worker
+from pyanypia.convenience import (
+    Benefit,
+    deceased_worker,
+    disabled_worker,
+    retired_worker,
+    widow_guarantee_pia,
+)
 from pyanypia.dates import adjusted_birth, cola_year
 from pyanypia.disability import childcare_aime, di_family_max
 from pyanypia.earnings import (
@@ -26,6 +32,7 @@ from pyanypia.earnings import (
     quarters_of_coverage,
     years_of_coverage,
 )
+from pyanypia.family import Auxiliary, FamilyBenefits, family_benefits
 from pyanypia.formula import apply_colas, bend_points, family_max, family_max_bend_points, pia
 from pyanypia.minimum import special_minimum_pia
 from pyanypia.policy import CURRENT_LAW, Policy
@@ -65,4 +72,9 @@ __all__ = [
     "di_family_max",
     "disabled_worker",
     "disability_insured",
+    "Auxiliary",
+    "FamilyBenefits",
+    "deceased_worker",
+    "family_benefits",
+    "widow_guarantee_pia",
 ]

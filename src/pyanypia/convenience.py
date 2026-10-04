@@ -288,3 +288,91 @@ def disabled_worker(
         factor=np.ones(n), benefit=floor_dollar(unrounded),
         method=np.where(sm_wins, "special_minimum", "wage_indexed"),
         insured=insured)
+
+
+def deceased_worker(
+    earnings: Any, birth_year: ArrayLike, birth_month: ArrayLike, death_year: ArrayLike, *,
+    benefit: tuple[ArrayLike, ArrayLike], first_year: int | None = None,
+    birth_day: ArrayLike = 15, policy: Policy = CURRENT_LAW,
+) -> Benefit:
+    """A deceased worker's PIA and family maximum in a survivor benefit month
+    (`benefit` is (year, month)), for `family_benefits(..., survivor=True)`.
+
+    Earnings through the year of death count. `factor` is 1 and `benefit` 0:
+    the worker is paid nothing. `insured` is not evaluated (always True).
+    """
+    m, first, single = as_earnings(earnings, first_year)
+    n = m.shape[0]
+    by, bm, bd = (_rows(birth_year, "birth_year", n), _rows(birth_month, "birth_month", n),
+                  _rows(birth_day, "birth_day", n))
+    dy = _rows(death_year, "death_year", n)
+    ben_y, ben_m = _rows(benefit[0], "benefit_year", n), _rows(benefit[1], "benefit_month", n)
+    ky, _ = adjusted_birth(by, bm, bd)
+    elig = np.minimum(ky + 62, dy)
+    comp = np.asarray(_earn.computation_years(by, bm, elig, birth_day=bd, death_year=dy))
+    aime = np.asarray(_earn.aime(m, elig, comp, first_year=first, last_year=dy, policy=policy))
+    pia_elig = np.asarray(formula.pia(aime, elig, policy=policy))
+    mfb_elig = np.asarray(formula.family_max(pia_elig, elig, policy=policy))
+    wage_pia = np.asarray(formula.apply_colas(pia_elig, elig, ben_y, ben_m, policy=policy))
+    wage_mfb = np.asarray(formula.apply_colas(mfb_elig, elig, ben_y, ben_m, policy=policy))
+    sm_pia, sm_mfb = _special_minimum(m, first, dy, ben_y, ben_m, policy)
+    sm_wins = sm_pia > wage_pia
+    nra = np.asarray(claiming.normal_retirement_age(by, bm, birth_day=bd, policy=policy))
+    return _benefit(
+        single, elig_year=elig, aime=aime, pia_elig=pia_elig,
+        pia=np.where(sm_wins, sm_pia, wage_pia), mfb=np.where(sm_wins, sm_mfb, wage_mfb),
+        nra=nra, factor=np.ones(n), benefit=np.zeros(n),
+        method=np.where(sm_wins, "special_minimum", "wage_indexed"),
+        insured=np.ones(n, dtype=bool))
+
+
+def widow_guarantee_pia(
+    earnings: Any, birth_year: ArrayLike, birth_month: ArrayLike, death_year: ArrayLike,
+    death_month: ArrayLike, *, widow_birth_year: ArrayLike, widow_birth_month: ArrayLike,
+    benefit: tuple[ArrayLike, ArrayLike], widow_birth_day: ArrayLike = 15,
+    disabled_onset_year: ArrayLike | None = None, entitlement_year: ArrayLike | None = None,
+    first_year: int | None = None, birth_day: ArrayLike = 15, death_day: ArrayLike = 15,
+    policy: Policy = CURRENT_LAW,
+) -> Any:
+    """The re-indexed widow(er)'s guarantee PIA at a benefit month (ReindWid),
+    or 0 where it does not apply. Pass it as `Auxiliary.guarantee_pia`.
+
+    For a worker who dies before 62, a widow(er)'s benefit can instead be
+    based on the worker's earnings indexed to the year the widow(er) turns 60
+    (for a disabled widow(er), the later of onset and turning 50), but no
+    later than the year the worker would have turned 62. For a disabled
+    widow(er) pass `disabled_onset_year` and `entitlement_year`.
+    """
+    m, first, single = as_earnings(earnings, first_year)
+    n = m.shape[0]
+    by, bm, bd = (_rows(birth_year, "birth_year", n), _rows(birth_month, "birth_month", n),
+                  _rows(birth_day, "birth_day", n))
+    dy, dm, dd = (_rows(death_year, "death_year", n), _rows(death_month, "death_month", n),
+                  _rows(death_day, "death_day", n))
+    ben_y, ben_m = _rows(benefit[0], "benefit_year", n), _rows(benefit[1], "benefit_month", n)
+    ky, km = adjusted_birth(by, bm, bd)
+    wky, _ = adjusted_birth(widow_birth_year, widow_birth_month, widow_birth_day)
+    wky = np.broadcast_to(wky, (n,))
+    if disabled_onset_year is None:
+        widow_elig = wky + 60
+        test_year = widow_elig
+    else:
+        widow_elig = np.maximum(_rows(disabled_onset_year, "disabled_onset_year", n), wky + 50)
+        if entitlement_year is None:
+            raise ValueError("entitlement_year: required for a disabled widow(er)")
+        test_year = _rows(entitlement_year, "entitlement_year", n)
+    # death before the day before the 62nd birthday (a birth on the 1st
+    # makes that the last day of the previous month)
+    kday = np.where(bd == 1, 31, bd - 1)
+    before62 = (dy * 10000 + dm * 100 + dd) < ((ky + 62) * 10000 + km * 100 + kday)
+    elig_worker = np.minimum(ky + 62, dy)
+    applies = (before62 & (elig_worker > 1978)
+               & ((test_year > 1984) | (dy >= 1985)))
+    elig = np.minimum(np.maximum(elig_worker, widow_elig), ky + 62)
+    comp = np.asarray(_earn.computation_years(by, bm, elig_worker, birth_day=bd,
+                                              death_year=dy))
+    aime = np.asarray(_earn.aime(m, elig, comp, first_year=first, last_year=dy, policy=policy))
+    pia_elig = np.asarray(formula.pia(aime, elig, policy=policy))
+    pia = np.asarray(formula.apply_colas(pia_elig, elig, ben_y, ben_m, policy=policy))
+    result = np.where(applies, pia, 0.0)
+    return result[0].item() if single else result
